@@ -27,9 +27,18 @@ export class GitContributionAnalyzer {
         this.git = git;
     }
 
-    async getContributionStats(startDate: moment.Moment, endDate: moment.Moment): Promise<{ [author: string]: AuthorStats }> {
+    async getContributionStats(startDate?: moment.Moment, endDate?: moment.Moment): Promise<{ [author: string]: AuthorStats }> {
         try {
             console.log(`\n=== Starting contribution analysis ===`);
+            
+            // 如果没有提供日期，默认使用最近一周
+            if (!startDate) {
+                startDate = moment().subtract(7, 'days').startOf('day');
+            }
+            if (!endDate) {
+                endDate = moment().endOf('day');
+            }
+            
             console.log(`Date range: ${startDate.format()} to ${endDate.format()}`);
 
             // 使用更详细的git log命令，确保获取所有信息
@@ -39,7 +48,12 @@ export class GitContributionAnalyzer {
                 '--no-merges',              // 不包括合并提交
                 '--numstat',                // 获取更改统计
                 '--date=iso-strict',        // ISO格式的日期
-                '--pretty=format:commit %H%n%an%n%aI%n%s%n'  // 自定义输出格式
+                '--pretty=format:commit %H%n%an%n%aI%n%s%n',  // 自定义输出格式
+                '--invert-grep',            // 反向匹配，排除匹配的提交
+                '--grep=^WIP',              // 排除 WIP 提交
+                '--grep=^stash',            // 排除 stash 提交
+                '--grep=^\\[STASH\\]',      // 排除 [STASH] 提交
+                '--grep=^\\[stash\\]'       // 排除 [stash] 提交
             ]);
 
             console.log(`Found ${logs.all.length} commits`);
@@ -59,6 +73,15 @@ export class GitContributionAnalyzer {
                 const author = lines[1].trim();
                 const dateStr = lines[2].trim();
                 const subject = lines[3].trim();
+
+                // 跳过 stash 相关的提交
+                if (author.toLowerCase().includes('stash') || 
+                    subject.toLowerCase().includes('stash') || 
+                    subject.startsWith('WIP') ||
+                    subject.startsWith('[STASH]') ||
+                    subject.startsWith('[stash]')) {
+                    continue;
+                }
 
                 console.log('\n=== Processing commit ===');
                 console.log('Commit info:', { hash, author, dateStr, subject });
