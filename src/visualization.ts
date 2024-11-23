@@ -217,8 +217,8 @@ export class ContributionVisualization {
                     position: absolute;
                     top: 100px;
                     left: 100px;
-                    width: 140px;
-                    height: 140px;
+                    width: 150px;  /* 调整为150px */
+                    height: 150px;  /* 调整为150px */
                     background-color: rgba(255, 255, 255, 0.05);
                     border-radius: 8px;
                     cursor: move;
@@ -254,7 +254,7 @@ export class ContributionVisualization {
                     <div class="time-range-selector">
                         <label for="timeRange">Time Range:</label>
                         <select id="timeRange">
-                            <option value="7">Last Week</option>
+                            <option value="7" selected>Last Week</option>
                             <option value="30">Last Month</option>
                             <option value="90">Last 3 Months</option>
                             <option value="180">Last 6 Months</option>

@@ -27,7 +27,7 @@ export class GitContributionAnalyzer {
         this.git = git;
     }
 
-    async getContributionStats(days: number = 30): Promise<{ [author: string]: AuthorStats }> {
+    async getContributionStats(days: number = 7): Promise<{ [author: string]: AuthorStats }> {
         const endDate = moment().endOf('day');  // 设置截止时间为今天的结束
         const startDate = moment().subtract(days - 1, 'days').startOf('day');  // 从今天往前推
 
