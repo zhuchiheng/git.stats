@@ -52,7 +52,7 @@ export class ContributionVisualization {
         } else {
             this.panel = vscode.window.createWebviewPanel(
                 'codeActivityStats',
-                'Code Activity Statistics',
+                'Git Stats',
                 vscode.ViewColumn.One,
                 {
                     enableScripts: true,
@@ -124,7 +124,7 @@ export class ContributionVisualization {
         return `<!DOCTYPE html>
         <html>
         <head>
-            <title>Code Activity Statistics</title>
+            <title>Git Stats</title>
             <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
             <style>
                 :root {
@@ -202,7 +202,7 @@ export class ContributionVisualization {
         <body>
             <div class="container">
                 <div class="header">
-                    <h1>Code Activity Statistics</h1>
+                    <h1>Git Stats</h1>
                     <div class="time-range-selector">
                         <label for="timeRange">Time Range:</label>
                         <select id="timeRange">

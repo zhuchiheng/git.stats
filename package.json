@@ -10,7 +10,7 @@
     "Other"
   ],
   "activationEvents": [
-    "onCommand:code-activity-tracker.showStats"
+    "onStartupFinished"
   ],
   "main": "./out/extension.js",
   "contributes": {

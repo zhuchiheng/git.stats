@@ -5,7 +5,34 @@ import { GitContributionAnalyzer } from './gitAnalyzer';
 import { ContributionVisualization } from './visualization';
 
 export function activate(context: vscode.ExtensionContext) {
-    // console.log('Code Activity Tracker is now active!');
+    // Create status bar button
+    const statusBarItem = vscode.window.createStatusBarItem(
+        vscode.StatusBarAlignment.Right,
+        1000  // Higher priority to ensure better visibility
+    );
+
+    // Configure status bar item
+    statusBarItem.text = "$(git-commit) Git Stats";  // Using git-commit icon
+    statusBarItem.tooltip = "Click to view your Git contribution statistics";
+    statusBarItem.command = 'code-activity-tracker.showStats';
+    
+    // Only show the button when in a workspace with a Git repository
+    const updateStatusBarVisibility = () => {
+        if (vscode.workspace.workspaceFolders) {
+            statusBarItem.show();
+        } else {
+            statusBarItem.hide();
+        }
+    };
+
+    // Update visibility initially and when workspace folders change
+    updateStatusBarVisibility();
+    context.subscriptions.push(
+        vscode.workspace.onDidChangeWorkspaceFolders(() => updateStatusBarVisibility())
+    );
+
+    // Add status bar item to subscriptions for cleanup
+    context.subscriptions.push(statusBarItem);
 
     let disposable = vscode.commands.registerCommand('code-activity-tracker.showStats', async () => {
         const workspaceFolders = vscode.workspace.workspaceFolders;
