@@ -1,14 +1,40 @@
 {
-  "name": "code-activity-tracker",
-  "displayName": "Code Activity Tracker",
-  "description": "Track and visualize team code contributions based on Git history",
+  "name": "git-stats-visualizer",
+  "displayName": "Git Stats Visualizer",
+  "description": "Beautiful visualization of team code contributions with interactive charts and insights",
   "version": "0.1.0",
+  "publisher": "YOUR_PUBLISHER_NAME",
+  "author": {
+    "name": "Your Name"
+  },
+  "license": "MIT",
+  "icon": "resources/icon.png",
   "engines": {
     "vscode": "^1.60.0"
   },
   "categories": [
+    "Visualization",
     "Other"
   ],
+  "keywords": [
+    "git",
+    "statistics",
+    "visualization",
+    "team",
+    "contribution"
+  ],
+  "galleryBanner": {
+    "color": "#6C5CE7",
+    "theme": "dark"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/YOUR_USERNAME/git-stats-visualizer"
+  },
+  "bugs": {
+    "url": "https://github.com/YOUR_USERNAME/git-stats-visualizer/issues"
+  },
+  "homepage": "https://github.com/YOUR_USERNAME/git-stats-visualizer#readme",
   "activationEvents": [
     "onStartupFinished"
   ],
@@ -16,8 +42,8 @@
   "contributes": {
     "commands": [
       {
-        "command": "code-activity-tracker.showStats",
-        "title": "Show Git Stats"
+        "command": "git-stats-visualizer.showStats",
+        "title": "Show Git Stats Visualization"
       }
     ]
   },
@@ -29,22 +55,16 @@
     "lint": "eslint src --ext ts",
     "test": "node --no-deprecation ./out/test/runTest.js"
   },
-  "devDependencies": {
-    "@types/vscode": "^1.60.0",
-    "@types/glob": "^7.1.4",
-    "@types/mocha": "^9.0.0",
-    "@types/node": "14.x",
-    "@typescript-eslint/eslint-plugin": "^4.31.1",
-    "@typescript-eslint/parser": "^4.31.1",
-    "eslint": "^7.32.0",
-    "glob": "^7.1.7",
-    "mocha": "^9.1.1",
-    "typescript": "^4.4.3",
-    "@vscode/test-electron": "^1.6.2"
-  },
   "dependencies": {
-    "simple-git": "^3.19.1",
-    "chart.js": "^4.4.0",
+    "simple-git": "^3.20.0",
     "moment": "^2.29.4"
+  },
+  "devDependencies": {
+    "@types/node": "^16.11.7",
+    "@types/vscode": "^1.60.0",
+    "@typescript-eslint/eslint-plugin": "^6.7.0",
+    "@typescript-eslint/parser": "^6.7.0",
+    "eslint": "^8.26.0",
+    "typescript": "^5.2.2"
   }
 }
