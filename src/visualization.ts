@@ -193,16 +193,16 @@ export class ContributionVisualization {
                 }
                 .pie-chart-container {
                     position: absolute;
-                    top: 20px;
-                    left: 20px;
-                    width: 200px;
-                    height: 200px;
-                    background-color: rgba(255, 255, 255, 0.1);
+                    top: 100px;
+                    left: 100px;
+                    width: 140px;
+                    height: 140px;
+                    background-color: rgba(255, 255, 255, 0.05);
                     border-radius: 8px;
                     cursor: move;
                     z-index: 1000;
-                    backdrop-filter: blur(5px);
-                    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                    backdrop-filter: blur(3px);
+                    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.08);
                 }
                 .pie-chart-container:hover {
                     box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
