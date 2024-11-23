@@ -1,77 +1,79 @@
-# Git Stats - VS Code 扩展
+# Git Stats - VS Code Extension
 
-一个优雅的 VS Code 扩展，用于可视化团队代码贡献情况。通过交互式图表和直观的界面，帮助团队领导和管理者实时了解团队成员的工作情况。
+An elegant VS Code extension for visualizing team code contributions. Through interactive charts and an intuitive interface, it helps team leaders and managers monitor team members' work in real-time.
 
-## 使用方式
+## Usage
 
-点击 VS Code 状态栏中的 Git Stats 图标即可打开统计界面。
+Click the Git Stats icon in VS Code status bar to open the statistics interface.
 
 ![Git Stats Screenshot](resources/screenshot.png)
 
-## 功能特点
+## Features
 
-### 核心功能
-- 交互式饼图展示贡献分布
-- 时间序列折线图展示提交趋势
-- 可拖拽和调整大小的图表容器
-- 实时数据更新
+### Core Features
+- Interactive pie charts showing contribution distribution
+- Time series line charts displaying commit trends
+- Draggable and resizable chart containers
+- Real-time data updates
 
-### 统计指标
-- 每位作者的提交次数
-- 代码行数变更（增加/删除）
-- 文件修改数量统计
-- 团队整体贡献分析
+### Statistics Metrics
+- Commit count per author
+- Code line changes (additions/deletions)
+- File modification statistics
+- Team overall contribution analysis
 
-### 可视化功能
-- 提交分布饼图
-- 代码行数变更分布饼图
-- 详细的悬浮提示（包含百分比和具体数值）
-- 灵活的时间范围选择：
-  - 最近一周
-  - 最近一月
-  - 最近三月
-  - 最近半年
-  - 最近一年
+### Visualization Features
+- Commit distribution pie chart
+- Code line changes distribution pie chart
+- Detailed tooltips (with percentages and specific values)
+- Flexible time range selection:
+  - Last week
+  - Last month
+  - Last 3 months
+  - Last 6 months
+  - Last year
 
-## 安装方法
+## Installation
 
-1. 从 VS Code 插件市场安装
-2. 在 VS Code 中打开任意 Git 仓库
-3. 点击状态栏中的 Git Stats 图标即可开始使用
+1. Install from VS Code Marketplace
+2. Open any Git repository in VS Code
+3. Click the `Git Stats` icon in the status bar to start
 
-## 主要特性
+## Key Features
 
-- 现代简洁的界面设计
-- 响应式交互图表
-- 实时数据更新
-- 高效的内存使用
-- 流畅的动画过渡效果
+- Modern and clean interface design
+- Responsive interactive charts
+- Real-time data updates
+- Efficient memory usage
+- Smooth animation transitions
 
-## 使用场景
+## Use Cases
 
-特别适用于：
-- 团队领导跟踪项目进展
-- 代码评审规划和管理
-- Sprint 回顾和计划
-- 了解团队工作模式
-- 识别贡献模式
+Particularly suitable for:
+- Team leaders tracking project progress
+- Code review planning and management
+- Sprint retrospectives and planning
+- Understanding team work patterns
+- Identifying contribution patterns
 
-## 技术栈
+## Tech Stack
 
 - TypeScript
-- VS Code 扩展 API
-- Chart.js（数据可视化）
-- Simple Git（Git 操作）
-- Moment.js（日期处理）
+- VS Code Extension API
+- Chart.js (Data Visualization)
+- Simple Git (Git Operations)
+- Moment.js (Date Processing)
 
-## 参与贡献
+## Contributing
 
-欢迎提交 Issue 和 Pull Request！让我们一起把这个扩展做得更好。
+Issues and Pull Requests are welcome! Let's make this extension better together.
 
-## 开源协议
+## License
 
 Apache-2.0 license
 
-## 支持
+## Support
 
-如果遇到任何问题或有建议，请在我们的 [GitHub 仓库](https://github.com/lixianmin/git.stats/issues) 提交 Issue。
+If you encounter any issues or have suggestions, please submit an Issue on our [GitHub repository](https://github.com/lixianmin/git.stats/issues).
+
+[简体中文](README_CN.md)
