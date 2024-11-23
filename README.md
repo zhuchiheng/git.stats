@@ -1,6 +1,6 @@
 # Git Stats - VS Code Extension
 
-An elegant VS Code extension for visualizing team code contributions. Through interactive charts and an intuitive interface, it helps team leaders and managers monitor team members' work in real-time.
+An elegant VS Code extension for visualizing team code contributions. Through interactive charts and an intuitive interface, it helps understand team members' work in real-time.
 
 ## Usage
 
