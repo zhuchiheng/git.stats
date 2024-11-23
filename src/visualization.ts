@@ -367,7 +367,11 @@ export class ContributionVisualization {
                                         label: function(context) {
                                             const value = context.raw;
                                             const percentage = ((value / totalCommits) * 100).toFixed(1);
-                                            return context.label + ': ' + value + ' commits (' + percentage + '%)';
+                                            return [
+                                                context.label,
+                                                'Commits: ' + value,
+                                                'Percentage: ' + percentage + '%'
+                                            ];
                                         }
                                     }
                                 }
@@ -414,7 +418,11 @@ export class ContributionVisualization {
                                         label: function(context) {
                                             const value = context.raw;
                                             const percentage = ((value / totalLines) * 100).toFixed(1);
-                                            return context.label + ': ' + value + ' lines (' + percentage + '%)';
+                                            return [
+                                                context.label,
+                                                'Lines Changed: ' + value,
+                                                'Percentage: ' + percentage + '%'
+                                            ];
                                         }
                                     }
                                 }
