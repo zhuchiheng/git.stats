@@ -56,13 +56,13 @@ export function activate(context: vscode.ExtensionContext) {
             // console.log('Valid Git repository confirmed');
 
             // 创建分析器实例
-            const analyzer = new GitContributionAnalyzer(git);
+            const gitAnalyzer = new GitContributionAnalyzer(git);
             
             // 获取默认时间范围（最近一周）的统计数据
-            const stats = await analyzer.getContributionStats();
+            const stats = await gitAnalyzer.getContributionStats();
             
-            // 创建可视化实例并显示数据
-            const visualization = new ContributionVisualization(context.extensionUri);
+            // 创建可视化实例
+            const visualization = new ContributionVisualization(context, gitAnalyzer);
             
             // 显示加载消息
             vscode.window.withProgress({
@@ -73,18 +73,14 @@ export function activate(context: vscode.ExtensionContext) {
                 await visualization.show(stats);
             });
 
-            // 处理时间范围变化
+            // 监听时间范围变化
             visualization.onTimeRangeChange(async (days: number) => {
-                const endDate = moment.utc();
-                const startDate = moment.utc().subtract(days, 'days');
-                
-                // 显示加载消息
                 vscode.window.withProgress({
                     location: vscode.ProgressLocation.Notification,
                     title: "Updating statistics...",
                     cancellable: false
                 }, async (progress) => {
-                    const newStats = await analyzer.getContributionStats(startDate, endDate);
+                    const newStats = await gitAnalyzer.getContributionStats(days);
                     await visualization.updateStats(newStats);
                 });
             });

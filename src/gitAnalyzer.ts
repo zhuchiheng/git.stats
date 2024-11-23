@@ -27,17 +27,12 @@ export class GitContributionAnalyzer {
         this.git = git;
     }
 
-    async getContributionStats(startDate?: moment.Moment, endDate?: moment.Moment): Promise<{ [author: string]: AuthorStats }> {
+    async getContributionStats(days: number = 30): Promise<{ [author: string]: AuthorStats }> {
+        const endDate = moment().endOf('day');  // 设置截止时间为今天的结束
+        const startDate = moment().subtract(days - 1, 'days').startOf('day');  // 从今天往前推
+
         try {
             // console.log(`\n=== Starting contribution analysis ===`);
-            
-            // 如果没有提供日期，默认使用最近一周
-            if (!startDate) {
-                startDate = moment().subtract(7, 'days').startOf('day');
-            }
-            if (!endDate) {
-                endDate = moment().endOf('day');
-            }
             
             // console.log(`Date range: ${startDate.format()} to ${endDate.format()}`);
 

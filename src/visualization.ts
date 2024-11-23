@@ -1,16 +1,16 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { AuthorStats } from './gitAnalyzer';
+import { AuthorStats, GitContributionAnalyzer } from './gitAnalyzer';
 import moment from 'moment';
 
 export class ContributionVisualization {
     private panel: vscode.WebviewPanel | undefined;
-    private extensionUri: vscode.Uri;
-    private timeRangeChangeCallback?: (days: number) => void;
     private disposables: vscode.Disposable[] = [];
+    private timeRangeChangeCallback?: (days: number) => void;
+    private analyzer: GitContributionAnalyzer;
 
-    constructor(extensionUri: vscode.Uri) {
-        this.extensionUri = extensionUri;
+    constructor(private context: vscode.ExtensionContext, analyzer: GitContributionAnalyzer) {
+        this.analyzer = analyzer;
     }
 
     public dispose() {
@@ -20,6 +20,15 @@ export class ContributionVisualization {
 
     public onTimeRangeChange(callback: (days: number) => void) {
         this.timeRangeChangeCallback = callback;
+    }
+
+    public async update(stats: { [author: string]: AuthorStats }) {
+        if (!this.panel) {
+            return;
+        }
+
+        // 更新图表数据
+        await this.updateVisualization(stats);
     }
 
     public async updateStats(stats: { [author: string]: AuthorStats }) {
@@ -44,6 +53,39 @@ export class ContributionVisualization {
         }
     }
 
+    private async updateVisualization(stats: { [author: string]: AuthorStats }) {
+        if (!this.panel) {
+            return;
+        }
+
+        const authors = Object.values(stats);
+        const dates = this.getAllDates(stats);
+
+        // 准备数据
+        const commitData = this.prepareCommitData(authors, dates);
+        const changeData = this.prepareChangeData(authors, dates);
+
+        // 更新图表数据
+        if (this.panel) {
+            await this.panel.webview.postMessage({
+                command: 'updateData',
+                commitData: commitData,
+                changeData: changeData
+            });
+        }
+    }
+
+    private async handleTimeRangeChange(days: number) {
+        try {
+            // 获取新的统计数据
+            const stats = await this.analyzer.getContributionStats(days);
+            // 更新可视化
+            await this.update(stats);
+        } catch (error) {
+            console.error('Error updating time range:', error);
+        }
+    }
+
     public async show(stats: { [author: string]: AuthorStats }) {
         console.log('Showing contribution stats:', stats);
 
@@ -57,7 +99,7 @@ export class ContributionVisualization {
                 {
                     enableScripts: true,
                     retainContextWhenHidden: true,
-                    localResourceRoots: [this.extensionUri]
+                    localResourceRoots: [this.context.extensionUri]
                 }
             );
 
@@ -67,30 +109,10 @@ export class ContributionVisualization {
 
             // 添加消息监听器
             this.panel.webview.onDidReceiveMessage(
-                message => {
+                async message => {
                     switch (message.command) {
                         case 'timeRangeChanged':
-                            const days = message.days;
-                            const startDate = moment.utc(Object.values(stats)[0]?.startDate);
-                            const endDate = moment.utc(startDate).add(days, 'days');
-                            const newDates = [];
-                            let currentDate = startDate.clone();
-                            while (currentDate.isSameOrBefore(endDate)) {
-                                newDates.push(currentDate.format('YYYY-MM-DD'));
-                                currentDate.add(1, 'day');
-                            }
-                            const newCommitData = this.prepareCommitData(Object.values(stats), newDates);
-                            const newChangeData = this.prepareChangeData(Object.values(stats), newDates);
-                            if (this.panel?.webview) {
-                                this.panel.webview.postMessage({
-                                    command: 'updateData',
-                                    commitData: newCommitData,
-                                    changeData: newChangeData
-                                });
-                            }
-                            if (this.timeRangeChangeCallback) {
-                                this.timeRangeChangeCallback(message.days);
-                            }
+                            await this.handleTimeRangeChange(message.days);
                             break;
                     }
                 },
@@ -559,25 +581,24 @@ export class ContributionVisualization {
                 createChangeChart(changeData);
 
                 // 监听来自 VS Code 的消息
-                window.addEventListener('message', (event) => {
-                    if (event.data.command === 'updateData') {
-                        commitData.labels = event.data.commitData.labels;
-                        commitData.datasets = event.data.commitData.datasets;
-                        changeData.labels = event.data.changeData.labels;
-                        changeData.datasets = event.data.changeData.datasets;
-
-                        // 更新图表
-                        const commitChart = Chart.getChart('commitChart');
-                        if (commitChart) {
-                            commitChart.data = commitData;
-                            commitChart.update();
-                        }
-
-                        const changeChart = Chart.getChart('changeChart');
-                        if (changeChart) {
-                            changeChart.data = changeData;
-                            changeChart.update();
-                        }
+                window.addEventListener('message', event => {
+                    const message = event.data;
+                    switch (message.command) {
+                        case 'updateData':
+                            // 更新所有图表
+                            if (commitChart) {
+                                commitChart.data = message.commitData;
+                                commitChart.update();
+                                // 更新commits饼图
+                                createPieChart(message.commitData);
+                            }
+                            if (changeChart) {
+                                changeChart.data = message.changeData;
+                                changeChart.update();
+                                // 更新lines changed饼图
+                                createLinesChangedPieChart(message.changeData);
+                            }
+                            break;
                     }
                 });
 
@@ -585,7 +606,7 @@ export class ContributionVisualization {
                 const timeRangeSelect = document.getElementById('timeRange');
                 timeRangeSelect.addEventListener('change', (event) => {
                     const days = event.target.value;
-                    // 发送消息到 VS Code
+                    // 发送消息到 VS Code，请求更新数据
                     vscode.postMessage({
                         command: 'timeRangeChanged',
                         days: parseInt(days)
