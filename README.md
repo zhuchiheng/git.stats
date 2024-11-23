@@ -2,6 +2,12 @@
 
 一个优雅的 VS Code 扩展，用于可视化团队代码贡献情况。通过交互式图表和直观的界面，帮助团队领导和管理者实时了解团队成员的工作情况。
 
+## 使用方式
+
+点击 VS Code 状态栏中的 Git Stats 图标即可打开统计界面。
+
+![Git Stats Screenshot](resources/screenshot.png)
+
 ## 功能特点
 
 ### 核心功能
@@ -31,16 +37,7 @@
 
 1. 从 VS Code 插件市场安装
 2. 在 VS Code 中打开任意 Git 仓库
-3. 按下 `Ctrl+Shift+P`（Windows/Linux）或 `Cmd+Shift+P`（Mac）
-4. 输入 "显示 Git 统计可视化" 并选择该命令
-
-## 使用说明
-
-扩展提供了直观的界面，包含：
-- 可自由拖拽的图表容器
-- 交互式时间范围选择器
-- 详细的数据悬浮提示
-- 切换 Git 仓库时自动更新
+3. 点击状态栏中的 Git Stats 图标即可开始使用
 
 ## 主要特性
 
@@ -73,7 +70,7 @@
 
 ## 开源协议
 
-MIT 协议
+Apache-2.0 license
 
 ## 支持
 

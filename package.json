@@ -29,12 +29,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/YOUR_USERNAME/git-stats-visualizer"
+    "url": "https://github.com/lixianmin/git.stats"
   },
   "bugs": {
-    "url": "https://github.com/YOUR_USERNAME/git-stats-visualizer/issues"
+    "url": "https://github.com/lixianmin/git.stats/issues"
   },
-  "homepage": "https://github.com/YOUR_USERNAME/git-stats-visualizer#readme",
+  "homepage": "https://github.com/lixianmin/git.stats#readme",
   "activationEvents": [
     "onStartupFinished"
   ],
@@ -42,8 +42,8 @@
   "contributes": {
     "commands": [
       {
-        "command": "git-stats-visualizer.showStats",
-        "title": "Show Git Stats Visualization"
+        "command": "git-stats.showStats",
+        "title": "Show Git Stats"
       }
     ]
   },
