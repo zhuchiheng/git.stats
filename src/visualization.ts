@@ -149,52 +149,88 @@ export class ContributionVisualization {
                     align-items: center;
                     gap: 10px;
                     background-color: var(--vscode-dropdown-background);
-                    padding: 8px 12px;
-                    border-radius: 4px;
-                }
-                .time-range-selector select {
-                    padding: 4px 8px;
-                    border: 1px solid var(--vscode-dropdown-border);
-                    border-radius: 4px;
-                    background-color: var(--vscode-dropdown-background);
                     color: var(--vscode-dropdown-foreground);
-                    font-size: 14px;
-                    cursor: pointer;
-                }
-                .time-range-selector select:hover {
-                    border-color: var(--vscode-focusBorder);
-                }
-                .time-range-info {
-                    background-color: var(--vscode-dropdown-background);
-                    padding: 10px;
+                    border: 1px solid var(--vscode-dropdown-border);
+                    padding: 4px 8px;
                     border-radius: 4px;
-                    margin-bottom: 20px;
-                    font-size: 14px;
                 }
                 .chart-container {
-                    margin-bottom: 30px;
+                    position: relative;
+                    height: 400px;
+                    margin-bottom: 20px;
                     background-color: var(--vscode-editor-background);
                     padding: 15px;
                     border-radius: 8px;
                     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                    height: 400px;
-                    position: relative;
+                }
+                .chart-title {
+                    margin-bottom: 15px;
+                    color: var(--vscode-foreground);
+                    font-size: 18px;
+                    font-weight: 500;
                 }
                 .summary-table {
                     width: 100%;
                     border-collapse: collapse;
                     margin-top: 20px;
+                    margin-bottom: 30px;
+                    background-color: var(--vscode-editor-background);
+                    border-radius: 8px;
+                    overflow: hidden;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
                 }
                 .summary-table th, .summary-table td {
-                    border: 1px solid var(--vscode-dropdown-border);
-                    padding: 8px;
+                    padding: 12px;
                     text-align: left;
+                    border: 1px solid var(--vscode-dropdown-border);
                 }
                 .summary-table th {
                     background-color: var(--vscode-dropdown-background);
+                    font-weight: 500;
                 }
-                .chart-title {
-                    margin-bottom: 15px;
+                .summary-table tr:hover {
+                    background-color: var(--vscode-list-hoverBackground);
+                }
+                .pie-chart-container {
+                    position: absolute;
+                    top: 20px;
+                    left: 20px;
+                    width: 200px;
+                    height: 200px;
+                    background-color: rgba(255, 255, 255, 0.1);
+                    border-radius: 8px;
+                    cursor: move;
+                    z-index: 1000;
+                    backdrop-filter: blur(5px);
+                    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                }
+                .pie-chart-container:hover {
+                    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+                }
+                .pie-chart-title {
+                    text-align: center;
+                    padding: 8px;
+                    font-size: 14px;
+                    color: var(--vscode-foreground);
+                    background-color: rgba(0, 0, 0, 0.1);
+                    border-top-left-radius: 8px;
+                    border-top-right-radius: 8px;
+                    cursor: move;
+                }
+                select {
+                    background-color: var(--vscode-dropdown-background);
+                    color: var(--vscode-dropdown-foreground);
+                    border: 1px solid var(--vscode-dropdown-border);
+                    padding: 4px 8px;
+                    border-radius: 4px;
+                }
+                select:focus {
+                    outline: none;
+                    border-color: var(--vscode-focusBorder);
+                }
+                h1 {
+                    margin: 0;
+                    font-size: 24px;
                     color: var(--vscode-foreground);
                 }
             </style>
@@ -214,18 +250,16 @@ export class ContributionVisualization {
                         </select>
                     </div>
                 </div>
-                
-                <div class="time-range-info">
-                    <p>Statistics from ${authors[0]?.startDate?.format('YYYY-MM-DD')} to ${authors[0]?.endDate?.format('YYYY-MM-DD')}</p>
-                </div>
-
                 <div class="chart-container">
-                    <h2 class="chart-title">Daily Commits</h2>
+                    <div class="pie-chart-container">
+                        <div class="pie-chart-title">Contribution Distribution</div>
+                        <canvas id="pieChart"></canvas>
+                    </div>
+                    <h2 class="chart-title">Commits</h2>
                     <canvas id="commitChart"></canvas>
                 </div>
-                
                 <div class="chart-container">
-                    <h2 class="chart-title">Code Changes</h2>
+                    <h2 class="chart-title">Lines Changed</h2>
                     <canvas id="changeChart"></canvas>
                 </div>
 
@@ -249,161 +283,260 @@ export class ContributionVisualization {
                     `).join('')}
                 </table>
             </div>
-
             <script>
-                (function() {
-                    // 时间范围选择处理
-                    const timeRangeSelect = document.getElementById('timeRange');
-                    timeRangeSelect.addEventListener('change', (event) => {
-                        const days = event.target.value;
-                        // 发送消息到 VS Code
-                        vscode.postMessage({
-                            command: 'timeRangeChanged',
-                            days: parseInt(days)
-                        });
-                    });
+                // 拖动功能
+                const pieChartContainer = document.querySelector('.pie-chart-container');
+                let isDragging = false;
+                let currentX;
+                let currentY;
+                let initialX;
+                let initialY;
 
-                    // 获取 vscode API
-                    const vscode = acquireVsCodeApi();
+                pieChartContainer.addEventListener('mousedown', dragStart);
+                document.addEventListener('mousemove', drag);
+                document.addEventListener('mouseup', dragEnd);
 
-                    // 解析数据
-                    const commitData = ${JSON.stringify(commitData)};
-                    const changeData = ${JSON.stringify(changeData)};
+                function dragStart(e) {
+                    initialX = e.clientX - pieChartContainer.offsetLeft;
+                    initialY = e.clientY - pieChartContainer.offsetTop;
+                    isDragging = true;
+                }
 
-                    console.log('Commit data:', commitData);
-                    console.log('Change data:', changeData);
+                function drag(e) {
+                    if (isDragging) {
+                        e.preventDefault();
+                        currentX = e.clientX - initialX;
+                        currentY = e.clientY - initialY;
+                        
+                        // 限制在图表区域内
+                        const container = document.querySelector('.chart-container');
+                        const maxX = container.offsetWidth - pieChartContainer.offsetWidth;
+                        const maxY = container.offsetHeight - pieChartContainer.offsetHeight;
+                        
+                        currentX = Math.max(0, Math.min(currentX, maxX));
+                        currentY = Math.max(0, Math.min(currentY, maxY));
 
-                    // 创建提交图表
-                    const commitCtx = document.getElementById('commitChart');
-                    if (commitCtx) {
-                        console.log('Creating commit chart...');
-                        new Chart(commitCtx, {
-                            type: 'line',
-                            data: commitData,
-                            options: {
-                                responsive: true,
-                                maintainAspectRatio: false,
-                                interaction: {
-                                    intersect: false,
-                                    mode: 'index'
-                                },
-                                plugins: {
-                                    legend: {
-                                        position: 'top',
-                                    },
-                                    tooltip: {
-                                        callbacks: {
-                                            label: function(context) {
-                                                return \`\${context.dataset.label}: \${context.raw} commits\`;
-                                            }
-                                        }
+                        pieChartContainer.style.left = currentX + 'px';
+                        pieChartContainer.style.top = currentY + 'px';
+                    }
+                }
+
+                function dragEnd() {
+                    isDragging = false;
+                }
+
+                const vscode = acquireVsCodeApi();
+                let commitChart, changeChart, pieChart;
+
+                // 创建饼图
+                function createPieChart(data) {
+                    const ctx = document.getElementById('pieChart');
+                    const totalCommits = data.datasets.reduce((acc, dataset) => {
+                        return acc + dataset.data.reduce((sum, val) => sum + val, 0);
+                    }, 0);
+                    
+                    const pieData = {
+                        labels: data.datasets.map(d => d.label),
+                        datasets: [{
+                            data: data.datasets.map(d => 
+                                d.data.reduce((sum, val) => sum + val, 0)
+                            ),
+                            backgroundColor: data.datasets.map(d => d.borderColor),
+                            borderColor: 'rgba(0, 0, 0, 0.1)',
+                            borderWidth: 1
+                        }]
+                    };
+
+                    if (pieChart) {
+                        pieChart.destroy();
+                    }
+
+                    pieChart = new Chart(ctx, {
+                        type: 'pie',
+                        data: pieData,
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: {
+                                    display: true,
+                                    position: 'bottom',
+                                    labels: {
+                                        color: getComputedStyle(document.documentElement)
+                                            .getPropertyValue('--vscode-foreground')
                                     }
                                 },
-                                elements: {
-                                    line: {
-                                        tension: 0.4,  // 添加曲线张力
-                                        cubicInterpolationMode: 'monotone'  // 使用单调的三次插值
-                                    }
-                                },
-                                scales: {
-                                    x: {
-                                        title: {
-                                            display: true,
-                                            text: 'Date'
-                                        },
-                                        ticks: {
-                                            maxRotation: 45,
-                                            minRotation: 45
-                                        }
-                                    },
-                                    y: {
-                                        beginAtZero: true,
-                                        title: {
-                                            display: true,
-                                            text: 'Number of Commits'
+                                tooltip: {
+                                    callbacks: {
+                                        label: function(context) {
+                                            const value = context.raw;
+                                            const percentage = ((value / totalCommits) * 100).toFixed(1);
+                                            return \`\${context.label}: \${value} commits (\${percentage}%)\`;
                                         }
                                     }
                                 }
-                            }
-                        });
-                    } else {
-                        console.error('Could not find commit chart canvas');
-                    }
-
-                    // 创建变更图表
-                    const changeCtx = document.getElementById('changeChart');
-                    if (changeCtx) {
-                        console.log('Creating change chart...');
-                        new Chart(changeCtx, {
-                            type: 'bar',
-                            data: changeData,
-                            options: {
-                                responsive: true,
-                                maintainAspectRatio: false,
-                                interaction: {
-                                    intersect: false,
-                                    mode: 'index'
-                                },
-                                plugins: {
-                                    legend: {
-                                        position: 'top',
-                                    },
-                                    tooltip: {
-                                        callbacks: {
-                                            label: function(context) {
-                                                return \`\${context.dataset.label}: \${context.raw} lines changed\`;
-                                            }
-                                        }
-                                    }
-                                },
-                                scales: {
-                                    x: {
-                                        title: {
-                                            display: true,
-                                            text: 'Date'
-                                        },
-                                        ticks: {
-                                            maxRotation: 45,
-                                            minRotation: 45
-                                        }
-                                    },
-                                    y: {
-                                        beginAtZero: true,
-                                        title: {
-                                            display: true,
-                                            text: 'Lines Changed'
-                                        }
-                                    }
-                                }
-                            }
-                        });
-                    } else {
-                        console.error('Could not find change chart canvas');
-                    }
-
-                    // 监听来自 VS Code 的消息
-                    window.addEventListener('message', (event) => {
-                        if (event.data.command === 'updateData') {
-                            commitData.labels = event.data.commitData.labels;
-                            commitData.datasets = event.data.commitData.datasets;
-                            changeData.labels = event.data.changeData.labels;
-                            changeData.datasets = event.data.changeData.datasets;
-
-                            // 更新图表
-                            const commitChart = Chart.getChart('commitChart');
-                            if (commitChart) {
-                                commitChart.data = commitData;
-                                commitChart.update();
-                            }
-
-                            const changeChart = Chart.getChart('changeChart');
-                            if (changeChart) {
-                                changeChart.data = changeData;
-                                changeChart.update();
                             }
                         }
                     });
-                })();
+                }
+
+                // 更新现有的图表创建代码
+                function createCommitChart(data) {
+                    const ctx = document.getElementById('commitChart');
+                    if (commitChart) {
+                        commitChart.destroy();
+                    }
+                    commitChart = new Chart(ctx, {
+                        type: 'line',
+                        data: data,
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            interaction: {
+                                intersect: false,
+                                mode: 'index'
+                            },
+                            plugins: {
+                                legend: {
+                                    position: 'top',
+                                },
+                                tooltip: {
+                                    callbacks: {
+                                        label: function(context) {
+                                            return \`\${context.dataset.label}: \${context.raw} commits\`;
+                                        }
+                                    }
+                                }
+                            },
+                            elements: {
+                                line: {
+                                    tension: 0.4,
+                                    cubicInterpolationMode: 'monotone'
+                                }
+                            },
+                            scales: {
+                                x: {
+                                    title: {
+                                        display: true,
+                                        text: 'Date'
+                                    },
+                                    ticks: {
+                                        maxRotation: 45,
+                                        minRotation: 45
+                                    }
+                                },
+                                y: {
+                                    beginAtZero: true,
+                                    title: {
+                                        display: true,
+                                        text: 'Number of Commits'
+                                    }
+                                }
+                            }
+                        }
+                    });
+
+                    // 创建饼图
+                    createPieChart(data);
+                }
+
+                // 创建变更图表
+                function createChangeChart(data) {
+                    const ctx = document.getElementById('changeChart');
+                    if (changeChart) {
+                        changeChart.destroy();
+                    }
+                    changeChart = new Chart(ctx, {
+                        type: 'bar',
+                        data: data,
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            interaction: {
+                                intersect: false,
+                                mode: 'index'
+                            },
+                            plugins: {
+                                legend: {
+                                    position: 'top',
+                                },
+                                tooltip: {
+                                    callbacks: {
+                                        label: function(context) {
+                                            return \`\${context.dataset.label}: \${context.raw} lines changed\`;
+                                        }
+                                    }
+                                }
+                            },
+                            scales: {
+                                x: {
+                                    title: {
+                                        display: true,
+                                        text: 'Date'
+                                    },
+                                    ticks: {
+                                        maxRotation: 45,
+                                        minRotation: 45
+                                    }
+                                },
+                                y: {
+                                    beginAtZero: true,
+                                    title: {
+                                        display: true,
+                                        text: 'Lines Changed'
+                                    }
+                                }
+                            }
+                        }
+                    });
+                }
+
+                // 解析数据
+                const commitData = ${JSON.stringify(commitData)};
+                const changeData = ${JSON.stringify(changeData)};
+
+                console.log('Commit data:', commitData);
+                console.log('Change data:', changeData);
+
+                // 创建提交图表
+                createCommitChart(commitData);
+
+                // 创建变更图表
+                createChangeChart(changeData);
+
+                // 监听来自 VS Code 的消息
+                window.addEventListener('message', (event) => {
+                    if (event.data.command === 'updateData') {
+                        commitData.labels = event.data.commitData.labels;
+                        commitData.datasets = event.data.commitData.datasets;
+                        changeData.labels = event.data.changeData.labels;
+                        changeData.datasets = event.data.changeData.datasets;
+
+                        // 更新图表
+                        const commitChart = Chart.getChart('commitChart');
+                        if (commitChart) {
+                            commitChart.data = commitData;
+                            commitChart.update();
+                        }
+
+                        const changeChart = Chart.getChart('changeChart');
+                        if (changeChart) {
+                            changeChart.data = changeData;
+                            changeChart.update();
+                        }
+                    }
+                });
+
+                // 时间范围选择处理
+                const timeRangeSelect = document.getElementById('timeRange');
+                timeRangeSelect.addEventListener('change', (event) => {
+                    const days = event.target.value;
+                    // 发送消息到 VS Code
+                    vscode.postMessage({
+                        command: 'timeRangeChanged',
+                        days: parseInt(days)
+                    });
+                });
             </script>
         </body>
         </html>`;

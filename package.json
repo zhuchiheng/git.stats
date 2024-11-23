@@ -17,7 +17,7 @@
     "commands": [
       {
         "command": "code-activity-tracker.showStats",
-        "title": "Show Code Activity Stats"
+        "title": "Show Git Stats"
       }
     ]
   },
