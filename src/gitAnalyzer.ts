@@ -142,13 +142,23 @@ export class GitContributionAnalyzer {
         return !shouldExclude;
     }
 
-    async getContributionStats(days: number = 7): Promise<{ [author: string]: AuthorStats }> {
+    async getContributionStats(days: number = 7, startDateStr?: string, endDateStr?: string): Promise<{ [author: string]: AuthorStats }> {
         console.log(`Starting contribution analysis for the last ${days} days`);
         console.log(`Repository path: ${this.repoPath}`);
 
-        // 修改时间范围计算，确保包含今天
-        const endDate = moment().add(1, 'days').startOf('day');  // 明天的开始，确保包含今天所有提交
-        const startDate = moment().subtract(days - 1, 'days').startOf('day');  // 从今天开始往前推
+        // 计算时间范围
+        let endDate: moment.Moment;
+        let startDate: moment.Moment;
+
+        if (startDateStr && endDateStr) {
+            // 使用自定义日期范围
+            startDate = moment(startDateStr).startOf('day');
+            endDate = moment(endDateStr).endOf('day');
+        } else {
+            // 使用预设时间范围
+            endDate = moment().add(1, 'days').startOf('day');  // 明天的开始，确保包含今天所有提交
+            startDate = moment().subtract(days - 1, 'days').startOf('day');  // 从今天开始往前推
+        }
 
         console.log(`Analyzing commits from ${startDate.format('YYYY-MM-DD HH:mm:ss')} to ${endDate.format('YYYY-MM-DD HH:mm:ss')}`);
 

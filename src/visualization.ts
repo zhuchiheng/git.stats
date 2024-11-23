@@ -75,10 +75,10 @@ export class ContributionVisualization {
         }
     }
 
-    private async handleTimeRangeChange(days: number) {
+    private async handleTimeRangeChange(days: number, startDate?: string, endDate?: string) {
         try {
             // 获取新的统计数据
-            const stats = await this.analyzer.getContributionStats(days);
+            const stats = await this.analyzer.getContributionStats(days, startDate, endDate);
             // 更新可视化
             await this.update(stats);
         } catch (error) {
@@ -112,7 +112,7 @@ export class ContributionVisualization {
                 async message => {
                     switch (message.command) {
                         case 'timeRangeChanged':
-                            await this.handleTimeRangeChange(message.days);
+                            await this.handleTimeRangeChange(message.days, message.startDate, message.endDate);
                             break;
                     }
                 },
@@ -170,11 +170,20 @@ export class ContributionVisualization {
                     display: flex;
                     align-items: center;
                     gap: 10px;
+                    padding: 4px 8px;
+                    border-radius: 4px;
+                }
+                .date-picker {
                     background-color: var(--vscode-dropdown-background);
                     color: var(--vscode-dropdown-foreground);
                     border: 1px solid var(--vscode-dropdown-border);
                     padding: 4px 8px;
                     border-radius: 4px;
+                    font-size: 13px;
+                }
+                .date-separator {
+                    color: var(--vscode-foreground);
+                    margin: 0 4px;
                 }
                 .chart-container {
                     position: relative;
@@ -235,6 +244,7 @@ export class ContributionVisualization {
                     border: 1px solid var(--vscode-dropdown-border);
                     padding: 4px 8px;
                     border-radius: 4px;
+                    font-size: 13px;
                 }
                 select:focus {
                     outline: none;
@@ -252,13 +262,16 @@ export class ContributionVisualization {
                 <div class="header">
                     <h1>Git Stats</h1>
                     <div class="time-range-selector">
-                        <label for="timeRange">Time Range:</label>
+                        <input type="date" id="startDate" class="date-picker" title="Start Date">
+                        <span class="date-separator">to</span>
+                        <input type="date" id="endDate" class="date-picker" title="End Date">
                         <select id="timeRange">
                             <option value="7" selected>Last Week</option>
                             <option value="30">Last Month</option>
                             <option value="90">Last 3 Months</option>
                             <option value="180">Last 6 Months</option>
                             <option value="365">Last Year</option>
+                            <option value="custom">Custom Range</option>
                         </select>
                     </div>
                 </div>
@@ -604,14 +617,68 @@ export class ContributionVisualization {
 
                 // 时间范围选择处理
                 const timeRangeSelect = document.getElementById('timeRange');
-                timeRangeSelect.addEventListener('change', (event) => {
-                    const days = event.target.value;
-                    // 发送消息到 VS Code，请求更新数据
+                const startDateInput = document.getElementById('startDate');
+                const endDateInput = document.getElementById('endDate');
+
+                // 设置默认日期范围（最近一周）
+                const endDate = new Date();
+                const startDate = new Date();
+                startDate.setDate(endDate.getDate() - 6); // Last 7 days (including today)
+                
+                startDateInput.value = startDate.toISOString().split('T')[0];
+                endDateInput.value = endDate.toISOString().split('T')[0];
+
+                // 时间范围选择变化处理
+                timeRangeSelect.addEventListener('change', function(e) {
+                    const value = this.value;
+                    const today = new Date();
+                    let start = new Date();
+
+                    if (value === 'custom') {
+                        return; // 保持当前选择的日期不变
+                    }
+
+                    const days = parseInt(value);
+                    start.setDate(today.getDate() - (days - 1)); // -1是因为包含今天
+
+                    startDateInput.value = start.toISOString().split('T')[0];
+                    endDateInput.value = today.toISOString().split('T')[0];
+
+                    // 通知扩展时间范围已更改
                     vscode.postMessage({
                         command: 'timeRangeChanged',
-                        days: parseInt(days)
+                        days: days
                     });
                 });
+
+                // 日期选择变化处理
+                function handleDateChange() {
+                    const start = new Date(startDateInput.value);
+                    const end = new Date(endDateInput.value);
+                    
+                    if (start && end && start <= end) {
+                        // 计算天数差异
+                        const diffTime = Math.abs(end - start);
+                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // +1 包含开始日期
+                        
+                        // 设置下拉框为custom
+                        timeRangeSelect.value = 'custom';
+                        
+                        // 通知扩展时间范围已更改
+                        vscode.postMessage({
+                            command: 'timeRangeChanged',
+                            days: diffDays,
+                            startDate: startDateInput.value,
+                            endDate: endDateInput.value
+                        });
+                    }
+                }
+
+                startDateInput.addEventListener('change', handleDateChange);
+                endDateInput.addEventListener('change', handleDateChange);
+
+                // 初始化时触发一次时间范围变化
+                timeRangeSelect.dispatchEvent(new Event('change'));
             </script>
         </body>
         </html>`;
