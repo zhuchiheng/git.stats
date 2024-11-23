@@ -193,19 +193,19 @@ export class ContributionVisualization {
                 }
                 .pie-chart-container {
                     position: absolute;
-                    top: 20px;
-                    left: 20px;
-                    width: 200px;
-                    height: 200px;
-                    background-color: rgba(255, 255, 255, 0.1);
+                    top: 100px;  
+                    left: 100px;  
+                    width: 160px;  
+                    height: 160px;  
+                    background-color: rgba(255, 255, 255, 0.05);  
                     border-radius: 8px;
                     cursor: move;
                     z-index: 1000;
-                    backdrop-filter: blur(5px);
-                    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                    backdrop-filter: blur(3px);  
+                    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.08);  
                 }
                 .pie-chart-container:hover {
-                    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+                    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.12);  
                 }
                 select {
                     background-color: var(--vscode-dropdown-background);
@@ -230,13 +230,13 @@ export class ContributionVisualization {
                 <div class="header">
                     <h1>Git Stats</h1>
                     <div class="time-range-selector">
-                        <label for="timeRange">Time Range:</label>
-                        <select id="timeRange">
-                            <option value="7">Last Week</option>
-                            <option value="30">Last Month</option>
-                            <option value="90">Last 3 Months</option>
-                            <option value="180">Last 6 Months</option>
-                            <option value="365">Last Year</option>
+                        <label for="startDate">Start Date:</label>
+                        <select id="startDate">
+                            ${dates.map(date => `<option value="${date}">${date}</option>`).join('')}
+                        </select>
+                        <label for="endDate">End Date:</label>
+                        <select id="endDate">
+                            ${dates.map(date => `<option value="${date}">${date}</option>`).join('')}
                         </select>
                     </div>
                 </div>
@@ -537,6 +537,70 @@ export class ContributionVisualization {
                     createLinesChangedPieChart(data);
                 }
 
+                // 更新图表数据
+                function updateChartData(startDate: string, endDate: string) {
+                    const filteredCommitData = {
+                        labels: commitData.labels,
+                        datasets: commitData.datasets.map(dataset => ({
+                            ...dataset,
+                            data: dataset.data.filter((_, index) => {
+                                const date = commitData.labels[index];
+                                return date >= startDate && date <= endDate;
+                            })
+                        }))
+                    };
+
+                    const filteredChangeData = {
+                        labels: changeData.labels,
+                        datasets: changeData.datasets.map(dataset => ({
+                            ...dataset,
+                            data: dataset.data.filter((_, index) => {
+                                const date = changeData.labels[index];
+                                return date >= startDate && date <= endDate;
+                            })
+                        }))
+                    };
+
+                    if (commitChart) {
+                        commitChart.data = filteredCommitData;
+                        commitChart.update();
+                    }
+
+                    if (changeChart) {
+                        changeChart.data = filteredChangeData;
+                        changeChart.update();
+                    }
+
+                    // 更新饼图数据
+                    createPieChart(filteredCommitData);
+                    createLinesChangedPieChart(filteredChangeData);
+                }
+
+                // 时间范围选择事件处理
+                document.getElementById('startDate')?.addEventListener('change', function() {
+                    const startDate = (this as HTMLSelectElement).value;
+                    const endDate = (document.getElementById('endDate') as HTMLSelectElement).value;
+                    updateChartData(startDate, endDate);
+                    
+                    vscode.postMessage({
+                        command: 'timeRangeChanged',
+                        startDate: startDate,
+                        endDate: endDate
+                    });
+                });
+
+                document.getElementById('endDate')?.addEventListener('change', function() {
+                    const startDate = (document.getElementById('startDate') as HTMLSelectElement).value;
+                    const endDate = (this as HTMLSelectElement).value;
+                    updateChartData(startDate, endDate);
+                    
+                    vscode.postMessage({
+                        command: 'timeRangeChanged',
+                        startDate: startDate,
+                        endDate: endDate
+                    });
+                });
+
                 // 解析数据
                 const commitData = ` + JSON.stringify(commitData) + `;
                 const changeData = ` + JSON.stringify(changeData) + `;
@@ -571,17 +635,6 @@ export class ContributionVisualization {
                             changeChart.update();
                         }
                     }
-                });
-
-                // 时间范围选择处理
-                const timeRangeSelect = document.getElementById('timeRange');
-                timeRangeSelect.addEventListener('change', (event) => {
-                    const days = event.target.value;
-                    // 发送消息到 VS Code
-                    vscode.postMessage({
-                        command: 'timeRangeChanged',
-                        days: parseInt(days)
-                    });
                 });
             </script>
         </body>
