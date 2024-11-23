@@ -29,7 +29,7 @@ export class ContributionVisualization {
 
         const authors = Object.values(stats);
         const dates = this.getAllDates(stats);
-        
+
         // 准备数据
         const commitData = this.prepareCommitData(authors, dates);
         const changeData = this.prepareChangeData(authors, dates);
@@ -46,7 +46,7 @@ export class ContributionVisualization {
 
     public async show(stats: { [author: string]: AuthorStats }) {
         console.log('Showing contribution stats:', stats);
-        
+
         if (this.panel) {
             this.panel.reveal();
         } else {
@@ -64,7 +64,7 @@ export class ContributionVisualization {
             this.panel.onDidDispose(() => {
                 this.panel = undefined;
             }, null, this.disposables);
-            
+
             // 添加消息监听器
             this.panel.webview.onDidReceiveMessage(
                 message => {
@@ -101,10 +101,10 @@ export class ContributionVisualization {
 
         const dates = this.getAllDates(stats);
         console.log('Generated dates:', dates);
-        
+
         const commitData = this.prepareCommitData(Object.values(stats), dates);
         console.log('Prepared commit data:', commitData);
-        
+
         const changeData = this.prepareChangeData(Object.values(stats), dates);
         console.log('Prepared change data:', changeData);
 
@@ -116,7 +116,7 @@ export class ContributionVisualization {
     private getWebviewContent(stats: { [author: string]: AuthorStats }): string {
         const authors = Object.values(stats);
         const dates = this.getAllDates(stats);
-        
+
         // 准备数据
         const commitData = this.prepareCommitData(authors, dates);
         const changeData = this.prepareChangeData(authors, dates);
@@ -207,16 +207,6 @@ export class ContributionVisualization {
                 .pie-chart-container:hover {
                     box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
                 }
-                .pie-chart-title {
-                    text-align: center;
-                    padding: 8px;
-                    font-size: 14px;
-                    color: var(--vscode-foreground);
-                    background-color: rgba(0, 0, 0, 0.1);
-                    border-top-left-radius: 8px;
-                    border-top-right-radius: 8px;
-                    cursor: move;
-                }
                 select {
                     background-color: var(--vscode-dropdown-background);
                     color: var(--vscode-dropdown-foreground);
@@ -252,13 +242,15 @@ export class ContributionVisualization {
                 </div>
                 <div class="chart-container">
                     <div class="pie-chart-container">
-                        <div class="pie-chart-title">Contribution Distribution</div>
                         <canvas id="pieChart"></canvas>
                     </div>
                     <h2 class="chart-title">Commits</h2>
                     <canvas id="commitChart"></canvas>
                 </div>
                 <div class="chart-container">
+                    <div class="pie-chart-container">
+                        <canvas id="linesChangedPieChart"></canvas>
+                    </div>
                     <h2 class="chart-title">Lines Changed</h2>
                     <canvas id="changeChart"></canvas>
                 </div>
@@ -272,61 +264,70 @@ export class ContributionVisualization {
                         <th>Lines Deleted</th>
                         <th>Files Changed</th>
                     </tr>
-                    ${authors.map(author => `
+                    ` + authors.map(author => `
                         <tr>
-                            <td>${author.author}</td>
-                            <td>${author.totalCommits}</td>
-                            <td>${author.totalInsertions}</td>
-                            <td>${author.totalDeletions}</td>
-                            <td>${author.totalFiles}</td>
+                            <td>` + author.author + `</td>
+                            <td>` + author.totalCommits + `</td>
+                            <td>` + author.totalInsertions + `</td>
+                            <td>` + author.totalDeletions + `</td>
+                            <td>` + author.totalFiles + `</td>
                         </tr>
-                    `).join('')}
+                    `).join('') + `
                 </table>
             </div>
             <script>
                 // 拖动功能
-                const pieChartContainer = document.querySelector('.pie-chart-container');
+                const pieChartContainers = document.querySelectorAll('.pie-chart-container');
                 let isDragging = false;
                 let currentX;
                 let currentY;
                 let initialX;
                 let initialY;
+                let activePieChart = null;
 
-                pieChartContainer.addEventListener('mousedown', dragStart);
+                pieChartContainers.forEach(container => {
+                    container.addEventListener('mousedown', (e) => {
+                        activePieChart = container;
+                        dragStart(e);
+                    });
+                });
+                
                 document.addEventListener('mousemove', drag);
                 document.addEventListener('mouseup', dragEnd);
 
                 function dragStart(e) {
-                    initialX = e.clientX - pieChartContainer.offsetLeft;
-                    initialY = e.clientY - pieChartContainer.offsetTop;
+                    if (!activePieChart) return;
+                    initialX = e.clientX - activePieChart.offsetLeft;
+                    initialY = e.clientY - activePieChart.offsetTop;
                     isDragging = true;
                 }
 
                 function drag(e) {
-                    if (isDragging) {
+                    if (isDragging && activePieChart) {
                         e.preventDefault();
                         currentX = e.clientX - initialX;
                         currentY = e.clientY - initialY;
                         
                         // 限制在图表区域内
-                        const container = document.querySelector('.chart-container');
-                        const maxX = container.offsetWidth - pieChartContainer.offsetWidth;
-                        const maxY = container.offsetHeight - pieChartContainer.offsetHeight;
+                        const container = activePieChart.closest('.chart-container');
+                        const maxX = container.offsetWidth - activePieChart.offsetWidth;
+                        const maxY = container.offsetHeight - activePieChart.offsetHeight;
                         
                         currentX = Math.max(0, Math.min(currentX, maxX));
                         currentY = Math.max(0, Math.min(currentY, maxY));
 
-                        pieChartContainer.style.left = currentX + 'px';
-                        pieChartContainer.style.top = currentY + 'px';
+                        activePieChart.style.left = currentX + 'px';
+                        activePieChart.style.top = currentY + 'px';
                     }
                 }
 
                 function dragEnd() {
                     isDragging = false;
+                    activePieChart = null;
                 }
 
                 const vscode = acquireVsCodeApi();
-                let commitChart, changeChart, pieChart;
+                let commitChart, changeChart, pieChart, linesChangedPieChart;
 
                 // 创建饼图
                 function createPieChart(data) {
@@ -341,7 +342,7 @@ export class ContributionVisualization {
                             data: data.datasets.map(d => 
                                 d.data.reduce((sum, val) => sum + val, 0)
                             ),
-                            backgroundColor: data.datasets.map(d => d.borderColor),
+                            backgroundColor: data.datasets.map(d => d.backgroundColor),
                             borderColor: 'rgba(0, 0, 0, 0.1)',
                             borderWidth: 1
                         }]
@@ -359,19 +360,61 @@ export class ContributionVisualization {
                             maintainAspectRatio: false,
                             plugins: {
                                 legend: {
-                                    display: true,
-                                    position: 'bottom',
-                                    labels: {
-                                        color: getComputedStyle(document.documentElement)
-                                            .getPropertyValue('--vscode-foreground')
-                                    }
+                                    display: false
                                 },
                                 tooltip: {
                                     callbacks: {
                                         label: function(context) {
                                             const value = context.raw;
                                             const percentage = ((value / totalCommits) * 100).toFixed(1);
-                                            return \`\${context.label}: \${value} commits (\${percentage}%)\`;
+                                            return context.label + ': ' + value + ' commits (' + percentage + '%)';
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+                }
+
+                // 创建Lines Changed饼图
+                function createLinesChangedPieChart(data) {
+                    const ctx = document.getElementById('linesChangedPieChart');
+                    const totalLines = data.datasets.reduce((acc, dataset) => {
+                        return acc + dataset.data.reduce((sum, val) => sum + val, 0);
+                    }, 0);
+                    
+                    const pieData = {
+                        labels: data.datasets.map(d => d.label),
+                        datasets: [{
+                            data: data.datasets.map(d => 
+                                d.data.reduce((sum, val) => sum + val, 0)
+                            ),
+                            backgroundColor: data.datasets.map(d => d.backgroundColor),
+                            borderColor: 'rgba(0, 0, 0, 0.1)',
+                            borderWidth: 1
+                        }]
+                    };
+
+                    if (linesChangedPieChart) {
+                        linesChangedPieChart.destroy();
+                    }
+
+                    linesChangedPieChart = new Chart(ctx, {
+                        type: 'pie',
+                        data: pieData,
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: {
+                                    display: false
+                                },
+                                tooltip: {
+                                    callbacks: {
+                                        label: function(context) {
+                                            const value = context.raw;
+                                            const percentage = ((value / totalLines) * 100).toFixed(1);
+                                            return context.label + ': ' + value + ' lines (' + percentage + '%)';
                                         }
                                     }
                                 }
@@ -403,7 +446,7 @@ export class ContributionVisualization {
                                 tooltip: {
                                     callbacks: {
                                         label: function(context) {
-                                            return \`\${context.dataset.label}: \${context.raw} commits\`;
+                                            return context.dataset.label + ': ' + context.raw + ' commits';
                                         }
                                     }
                                 }
@@ -463,7 +506,7 @@ export class ContributionVisualization {
                                 tooltip: {
                                     callbacks: {
                                         label: function(context) {
-                                            return \`\${context.dataset.label}: \${context.raw} lines changed\`;
+                                            return context.dataset.label + ': ' + context.raw + ' lines changed';
                                         }
                                     }
                                 }
@@ -489,11 +532,14 @@ export class ContributionVisualization {
                             }
                         }
                     });
+                    
+                    // 创建Lines Changed饼图
+                    createLinesChangedPieChart(data);
                 }
 
                 // 解析数据
-                const commitData = ${JSON.stringify(commitData)};
-                const changeData = ${JSON.stringify(changeData)};
+                const commitData = ` + JSON.stringify(commitData) + `;
+                const changeData = ` + JSON.stringify(changeData) + `;
 
                 console.log('Commit data:', commitData);
                 console.log('Change data:', changeData);
@@ -546,21 +592,21 @@ export class ContributionVisualization {
         const startDate = moment.utc(Object.values(stats)[0]?.startDate);
         const endDate = moment.utc(Object.values(stats)[0]?.endDate);
         const dates: string[] = [];
-        
+
         console.log('Date range:', startDate.format(), 'to', endDate.format());
-        
+
         let currentDate = startDate.clone();
         while (currentDate.isSameOrBefore(endDate)) {
             dates.push(currentDate.format('YYYY-MM-DD'));
             currentDate.add(1, 'day');
         }
-        
+
         return dates;
     }
 
     private prepareCommitData(authors: AuthorStats[], dates: string[]) {
         // 过滤掉 stash 相关的作者
-        authors = authors.filter(author => 
+        authors = authors.filter(author =>
             !author.author.toLowerCase().includes('stash')
         );
 
@@ -582,7 +628,7 @@ export class ContributionVisualization {
 
     private prepareChangeData(authors: AuthorStats[], dates: string[]) {
         // 过滤掉 stash 相关的作者
-        authors = authors.filter(author => 
+        authors = authors.filter(author =>
             !author.author.toLowerCase().includes('stash')
         );
 
