@@ -3,9 +3,9 @@
   "displayName": "Git Stats Visualizer",
   "description": "Beautiful visualization of team code contributions with interactive charts and insights",
   "version": "0.1.0",
-  "publisher": "YOUR_PUBLISHER_NAME",
+  "publisher": "local-test",
   "author": {
-    "name": "Your Name"
+    "name": "local-test"
   },
   "license": "MIT",
   "icon": "resources/icon.png",
