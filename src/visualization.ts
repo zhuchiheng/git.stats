@@ -299,6 +299,12 @@ export class ContributionVisualization {
                                         }
                                     }
                                 },
+                                elements: {
+                                    line: {
+                                        tension: 0.4,  // 添加曲线张力
+                                        cubicInterpolationMode: 'monotone'  // 使用单调的三次插值
+                                    }
+                                },
                                 scales: {
                                     x: {
                                         title: {
@@ -430,7 +436,9 @@ export class ContributionVisualization {
             data: dates.map(date => author.dailyStats[date]?.commits || 0),
             borderColor: this.getColor(index),
             backgroundColor: this.getColor(index),
-            fill: false
+            fill: false,
+            tension: 0.4,  // 添加曲线张力
+            cubicInterpolationMode: 'monotone'  // 使用单调的三次插值
         }));
 
         return {

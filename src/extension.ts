@@ -5,7 +5,7 @@ import { GitContributionAnalyzer } from './gitAnalyzer';
 import { ContributionVisualization } from './visualization';
 
 export function activate(context: vscode.ExtensionContext) {
-    console.log('Code Activity Tracker is now active!');
+    // console.log('Code Activity Tracker is now active!');
 
     let disposable = vscode.commands.registerCommand('code-activity-tracker.showStats', async () => {
         const workspaceFolders = vscode.workspace.workspaceFolders;
@@ -16,7 +16,7 @@ export function activate(context: vscode.ExtensionContext) {
         }
 
         const rootPath = workspaceFolders[0].uri.fsPath;
-        console.log(`Analyzing repository at: ${rootPath}`);
+        // console.log(`Analyzing repository at: ${rootPath}`);
         const git: SimpleGit = simpleGit(rootPath);
 
         try {
@@ -26,7 +26,7 @@ export function activate(context: vscode.ExtensionContext) {
                 vscode.window.showErrorMessage('This workspace is not a Git repository');
                 return;
             }
-            console.log('Valid Git repository confirmed');
+            // console.log('Valid Git repository confirmed');
 
             // 创建分析器实例
             const analyzer = new GitContributionAnalyzer(git);
@@ -64,6 +64,7 @@ export function activate(context: vscode.ExtensionContext) {
 
         } catch (error) {
             vscode.window.showErrorMessage('Error analyzing Git history: ' + error);
+            // console.error('Error:', error);
         }
     });
 
