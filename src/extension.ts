@@ -16,6 +16,7 @@ export function activate(context: vscode.ExtensionContext) {
         }
 
         const rootPath = workspaceFolders[0].uri.fsPath;
+        console.log(`Analyzing repository at: ${rootPath}`);
         const git: SimpleGit = simpleGit(rootPath);
 
         try {
@@ -25,6 +26,7 @@ export function activate(context: vscode.ExtensionContext) {
                 vscode.window.showErrorMessage('This workspace is not a Git repository');
                 return;
             }
+            console.log('Valid Git repository confirmed');
 
             // 创建分析器实例
             const analyzer = new GitContributionAnalyzer(git);
@@ -36,27 +38,29 @@ export function activate(context: vscode.ExtensionContext) {
             });
 
             if (!selectedRange) {
+                console.log('User cancelled time range selection');
                 return;
             }
+            console.log(`Selected time range: ${selectedRange}`);
 
             // 根据选择设置时间范围
-            const endDate = moment();
+            const endDate = moment.utc();
             let startDate: moment.Moment;
             switch (selectedRange) {
                 case 'Last Week':
-                    startDate = moment().subtract(7, 'days');
+                    startDate = moment.utc().subtract(7, 'days');
                     break;
                 case 'Last Month':
-                    startDate = moment().subtract(30, 'days');
+                    startDate = moment.utc().subtract(30, 'days');
                     break;
                 case 'Last 3 Months':
-                    startDate = moment().subtract(90, 'days');
+                    startDate = moment.utc().subtract(90, 'days');
                     break;
                 case 'Last Year':
-                    startDate = moment().subtract(365, 'days');
+                    startDate = moment.utc().subtract(365, 'days');
                     break;
                 default:
-                    startDate = moment().subtract(30, 'days');
+                    startDate = moment.utc().subtract(30, 'days');
             }
             
             // 显示加载消息
