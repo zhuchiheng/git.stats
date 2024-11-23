@@ -41,7 +41,7 @@ export function activate(context: vscode.ExtensionContext) {
 
             // 根据选择设置时间范围
             const endDate = moment();
-            let startDate;
+            let startDate: moment.Moment;
             switch (selectedRange) {
                 case 'Last Week':
                     startDate = moment().subtract(7, 'days');

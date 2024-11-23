@@ -36,7 +36,7 @@ export class ContributionVisualization {
         const authors = Object.values(stats);
         const dates = this.getAllDates(stats);
         
-        // 准备图表数据
+        // Get local path to Chart.js
         const commitData = this.prepareCommitData(authors, dates);
         const changeData = this.prepareChangeData(authors, dates);
 
@@ -44,7 +44,10 @@ export class ContributionVisualization {
         <html>
         <head>
             <title>Code Activity Statistics</title>
-            <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js" 
+                    integrity="sha512-Mf+mD3cRlZvCAFwZXfVvuJY3gUn+JwvlRQPz5UxJ3ZXs6h+ZPf7bhqnfhKxZm7RmkHHXtIn4ZYFQcPXg5ADqA==" 
+                    crossorigin="anonymous" 
+                    referrerpolicy="no-referrer"></script>
             <style>
                 .container {
                     padding: 20px;
