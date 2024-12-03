@@ -142,9 +142,44 @@ export class GitContributionAnalyzer {
         return !shouldExclude;
     }
 
+    private async getLastCommitTime(): Promise<moment.Moment> {
+        console.log('Getting last commit time...');
+        try {
+            // 使用 --pretty=format 来确保我们得到正确的日期格式
+            const log = await this.git.log([
+                '-1',  // 只获取最后一条提交
+                '--pretty=format:%aI'  // ISO 8601 格式的作者日期
+            ]);
+            
+            console.log('Last commit log:', log);
+            
+            // 由于我们使用了自定义格式，日期会直接在 log.latest.hash 中
+            if (log && log.latest && log.latest.hash) {
+                const dateStr = log.latest.hash.trim();
+                const lastCommitTime = moment(dateStr);
+                if (lastCommitTime.isValid()) {
+                    console.log('Last commit time:', lastCommitTime.format('YYYY-MM-DD HH:mm:ss'));
+                    return lastCommitTime;
+                } else {
+                    console.log('Invalid date format:', dateStr);
+                }
+            } else {
+                console.log('No commit found or invalid log format:', log);
+            }
+        } catch (error) {
+            console.error('Error getting last commit time:', error);
+        }
+        
+        // 如果获取失败，返回当前时间
+        const currentTime = moment();
+        console.log('Using current time as fallback:', currentTime.format('YYYY-MM-DD HH:mm:ss'));
+        return currentTime;
+    }
+
     async getContributionStats(days: number = 7, startDateStr?: string, endDateStr?: string): Promise<{ [author: string]: AuthorStats }> {
         console.log(`Starting contribution analysis for the last ${days} days`);
         console.log(`Repository path: ${this.repoPath}`);
+        console.log('Custom date range:', startDateStr, 'to', endDateStr);
 
         // 计算时间范围
         let endDate: moment.Moment;
@@ -154,10 +189,24 @@ export class GitContributionAnalyzer {
             // 使用自定义日期范围
             startDate = moment(startDateStr).startOf('day');
             endDate = moment(endDateStr).endOf('day');
+            console.log('Using custom date range');
         } else {
-            // 使用预设时间范围
-            endDate = moment().add(1, 'days').startOf('day');  // 明天的开始，确保包含今天所有提交
-            startDate = moment().subtract(days - 1, 'days').startOf('day');  // 从今天开始往前推
+            // 使用预设时间范围，从最后一次提交时间开始计算
+            console.log('Using preset time range');
+            endDate = await this.getLastCommitTime();
+            if (!endDate.isValid()) {
+                console.log('Invalid end date, using current time');
+                endDate = moment();
+            }
+            console.log('End date (last commit):', endDate.format('YYYY-MM-DD HH:mm:ss'));
+            
+            // 从最后提交时间开始往前推
+            startDate = endDate.clone().subtract(days - 1, 'days').startOf('day');
+            console.log('Start date:', startDate.format('YYYY-MM-DD HH:mm:ss'));
+            
+            // 确保包含最后一天的所有提交
+            endDate = endDate.clone().endOf('day');
+            console.log('Adjusted end date:', endDate.format('YYYY-MM-DD HH:mm:ss'));
         }
 
         console.log(`Analyzing commits from ${startDate.format('YYYY-MM-DD HH:mm:ss')} to ${endDate.format('YYYY-MM-DD HH:mm:ss')}`);
