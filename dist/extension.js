@@ -795,15 +795,15 @@ class ContributionVisualization {
         const changeData = this.prepareChangeData(Object.values(stats), dates);
         console.log('Prepared change data:', changeData);
         if (this.panel) {
-            this.panel.webview.html = this.getWebviewContent(stats);
+            this.panel.webview.html = this.getWebviewContent(stats, commitData, changeData);
         }
     }
-    getWebviewContent(stats) {
+    getWebviewContent(stats, commitData, changeData) {
         const authors = Object.values(stats);
         const dates = this.getAllDates(stats);
-        // 准备数据
-        const commitData = this.prepareCommitData(authors, dates);
-        const changeData = this.prepareChangeData(authors, dates);
+        // 使用最后一次commit日期作为结束日期，往前推7天作为开始日期
+        const endDate = (0, moment_1.default)(authors[0]?.endDate).format('YYYY-MM-DD');
+        const startDate = (0, moment_1.default)(authors[0]?.endDate).subtract(6, 'days').format('YYYY-MM-DD');
         return `<!DOCTYPE html>
         <html>
         <head>
@@ -887,8 +887,8 @@ class ContributionVisualization {
                     position: absolute;
                     top: 100px;
                     left: 100px;
-                    width: 150px;  /* 调整为150px */
-                    height: 150px;  /* 调整为150px */
+                    width: 150px;
+                    height: 150px;
                     background-color: rgba(255, 255, 255, 0.05);
                     border-radius: 8px;
                     cursor: move;
@@ -927,12 +927,12 @@ class ContributionVisualization {
                         <span class="date-separator">to</span>
                         <input type="date" id="endDate" class="date-picker" title="End Date">
                         <select id="timeRange">
-                            <option value="7" selected>Last Week</option>
+                            <option value="custom" selected>Custom Range</option>
+                            <option value="7">Last Week</option>
                             <option value="30">Last Month</option>
                             <option value="90">Last 3 Months</option>
                             <option value="180">Last 6 Months</option>
                             <option value="365">Last Year</option>
-                            <option value="custom">Custom Range</option>
                         </select>
                     </div>
                 </div>
@@ -1025,109 +1025,16 @@ class ContributionVisualization {
                 const vscode = acquireVsCodeApi();
                 let commitChart, changeChart, pieChart, linesChangedPieChart;
 
-                // 创建饼图
-                function createPieChart(data) {
-                    const ctx = document.getElementById('pieChart');
-                    const totalCommits = data.datasets.reduce((acc, dataset) => {
-                        return acc + dataset.data.reduce((sum, val) => sum + val, 0);
-                    }, 0);
-                    
-                    const pieData = {
-                        labels: data.datasets.map(d => d.label),
-                        datasets: [{
-                            data: data.datasets.map(d => 
-                                d.data.reduce((sum, val) => sum + val, 0)
-                            ),
-                            backgroundColor: data.datasets.map(d => d.backgroundColor),
-                            borderColor: 'rgba(0, 0, 0, 0.1)',
-                            borderWidth: 1
-                        }]
-                    };
+                // 解析数据
+                const commitData = ${JSON.stringify(commitData)};
+                const changeData = ${JSON.stringify(changeData)};
 
-                    if (pieChart) {
-                        pieChart.destroy();
-                    }
+                // 设置初始日期范围
+                document.getElementById('startDate').value = '${startDate}';
+                document.getElementById('endDate').value = '${endDate}';
+                document.getElementById('timeRange').value = 'custom';  // 固定显示为Custom Range
 
-                    pieChart = new Chart(ctx, {
-                        type: 'pie',
-                        data: pieData,
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            plugins: {
-                                legend: {
-                                    display: false
-                                },
-                                tooltip: {
-                                    callbacks: {
-                                        label: function(context) {
-                                            const value = context.raw;
-                                            const percentage = ((value / totalCommits) * 100).toFixed(1);
-                                            return [
-                                                context.label,
-                                                'Commits: ' + value,
-                                                'Percentage: ' + percentage + '%'
-                                            ];
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    });
-                }
-
-                // 创建Lines Changed饼图
-                function createLinesChangedPieChart(data) {
-                    const ctx = document.getElementById('linesChangedPieChart');
-                    const totalLines = data.datasets.reduce((acc, dataset) => {
-                        return acc + dataset.data.reduce((sum, val) => sum + val, 0);
-                    }, 0);
-                    
-                    const pieData = {
-                        labels: data.datasets.map(d => d.label),
-                        datasets: [{
-                            data: data.datasets.map(d => 
-                                d.data.reduce((sum, val) => sum + val, 0)
-                            ),
-                            backgroundColor: data.datasets.map(d => d.backgroundColor),
-                            borderColor: 'rgba(0, 0, 0, 0.1)',
-                            borderWidth: 1
-                        }]
-                    };
-
-                    if (linesChangedPieChart) {
-                        linesChangedPieChart.destroy();
-                    }
-
-                    linesChangedPieChart = new Chart(ctx, {
-                        type: 'pie',
-                        data: pieData,
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            plugins: {
-                                legend: {
-                                    display: false
-                                },
-                                tooltip: {
-                                    callbacks: {
-                                        label: function(context) {
-                                            const value = context.raw;
-                                            const percentage = ((value / totalLines) * 100).toFixed(1);
-                                            return [
-                                                context.label,
-                                                'Lines Changed: ' + value,
-                                                'Percentage: ' + percentage + '%'
-                                            ];
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    });
-                }
-
-                // 更新现有的图表创建代码
+                // 创建图表函数
                 function createCommitChart(data) {
                     const ctx = document.getElementById('commitChart');
                     if (commitChart) {
@@ -1182,12 +1089,8 @@ class ContributionVisualization {
                             }
                         }
                     });
-
-                    // 创建饼图
-                    createPieChart(data);
                 }
 
-                // 创建变更图表
                 function createChangeChart(data) {
                     const ctx = document.getElementById('changeChart');
                     if (changeChart) {
@@ -1236,23 +1139,113 @@ class ContributionVisualization {
                             }
                         }
                     });
-                    
-                    // 创建Lines Changed饼图
-                    createLinesChangedPieChart(data);
                 }
 
-                // 解析数据
-                const commitData = ` + JSON.stringify(commitData) + `;
-                const changeData = ` + JSON.stringify(changeData) + `;
+                function createPieChart(data) {
+                    const ctx = document.getElementById('pieChart');
+                    const totalCommits = data.datasets.reduce((acc, dataset) => {
+                        return acc + dataset.data.reduce((sum, val) => sum + val, 0);
+                    }, 0);
+                    
+                    const pieData = {
+                        labels: data.datasets.map(d => d.label),
+                        datasets: [{
+                            data: data.datasets.map(d => 
+                                d.data.reduce((sum, val) => sum + val, 0)
+                            ),
+                            backgroundColor: data.datasets.map(d => d.backgroundColor),
+                            borderColor: 'rgba(0, 0, 0, 0.1)',
+                            borderWidth: 1
+                        }]
+                    };
 
-                console.log('Commit data:', commitData);
-                console.log('Change data:', changeData);
+                    if (pieChart) {
+                        pieChart.destroy();
+                    }
 
-                // 创建提交图表
+                    pieChart = new Chart(ctx, {
+                        type: 'pie',
+                        data: pieData,
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: {
+                                    display: false
+                                },
+                                tooltip: {
+                                    callbacks: {
+                                        label: function(context) {
+                                            const value = context.raw;
+                                            const percentage = ((value / totalCommits) * 100).toFixed(1);
+                                            return [
+                                                context.label,
+                                                'Commits: ' + value,
+                                                'Percentage: ' + percentage + '%'
+                                            ];
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+                }
+
+                function createLinesChangedPieChart(data) {
+                    const ctx = document.getElementById('linesChangedPieChart');
+                    const totalLines = data.datasets.reduce((acc, dataset) => {
+                        return acc + dataset.data.reduce((sum, val) => sum + val, 0);
+                    }, 0);
+                    
+                    const pieData = {
+                        labels: data.datasets.map(d => d.label),
+                        datasets: [{
+                            data: data.datasets.map(d => 
+                                d.data.reduce((sum, val) => sum + val, 0)
+                            ),
+                            backgroundColor: data.datasets.map(d => d.backgroundColor),
+                            borderColor: 'rgba(0, 0, 0, 0.1)',
+                            borderWidth: 1
+                        }]
+                    };
+
+                    if (linesChangedPieChart) {
+                        linesChangedPieChart.destroy();
+                    }
+
+                    linesChangedPieChart = new Chart(ctx, {
+                        type: 'pie',
+                        data: pieData,
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: {
+                                    display: false
+                                },
+                                tooltip: {
+                                    callbacks: {
+                                        label: function(context) {
+                                            const value = context.raw;
+                                            const percentage = ((value / totalLines) * 100).toFixed(1);
+                                            return [
+                                                context.label,
+                                                'Lines Changed: ' + value,
+                                                'Percentage: ' + percentage + '%'
+                                            ];
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+                }
+
+                // 初始化所有图表
                 createCommitChart(commitData);
-
-                // 创建变更图表
                 createChangeChart(changeData);
+                createPieChart(commitData);
+                createLinesChangedPieChart(changeData);
 
                 // 监听来自 VS Code 的消息
                 window.addEventListener('message', event => {
@@ -1263,13 +1256,11 @@ class ContributionVisualization {
                             if (commitChart) {
                                 commitChart.data = message.commitData;
                                 commitChart.update();
-                                // 更新commits饼图
                                 createPieChart(message.commitData);
                             }
                             if (changeChart) {
                                 changeChart.data = message.changeData;
                                 changeChart.update();
-                                // 更新lines changed饼图
                                 createLinesChangedPieChart(message.changeData);
                             }
                             break;
@@ -1281,34 +1272,27 @@ class ContributionVisualization {
                 const startDateInput = document.getElementById('startDate');
                 const endDateInput = document.getElementById('endDate');
 
-                // 设置默认日期范围（最近一周）
-                const endDate = new Date();
-                const startDate = new Date();
-                startDate.setDate(endDate.getDate() - 6); // Last 7 days (including today)
-                
-                startDateInput.value = startDate.toISOString().split('T')[0];
-                endDateInput.value = endDate.toISOString().split('T')[0];
-
                 // 时间范围选择变化处理
                 timeRangeSelect.addEventListener('change', function(e) {
                     const value = this.value;
-                    const today = new Date();
-                    let start = new Date();
-
                     if (value === 'custom') {
                         return; // 保持当前选择的日期不变
                     }
 
                     const days = parseInt(value);
-                    start.setDate(today.getDate() - (days - 1)); // -1是因为包含今天
+                    const end = new Date();
+                    const start = new Date();
+                    start.setDate(end.getDate() - (days - 1)); // -1是因为包含今天
 
                     startDateInput.value = start.toISOString().split('T')[0];
-                    endDateInput.value = today.toISOString().split('T')[0];
+                    endDateInput.value = end.toISOString().split('T')[0];
 
                     // 通知扩展时间范围已更改
                     vscode.postMessage({
                         command: 'timeRangeChanged',
-                        days: days
+                        days: days,
+                        startDate: startDateInput.value,
+                        endDate: endDateInput.value
                     });
                 });
 
@@ -1337,9 +1321,6 @@ class ContributionVisualization {
 
                 startDateInput.addEventListener('change', handleDateChange);
                 endDateInput.addEventListener('change', handleDateChange);
-
-                // 初始化时触发一次时间范围变化
-                timeRangeSelect.dispatchEvent(new Event('change'));
             </script>
         </body>
         </html>`;
