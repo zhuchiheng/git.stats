@@ -369,11 +369,22 @@ export class ContributionVisualization {
                 const changeData = ${JSON.stringify(changeData)};
 
                 // 设置初始日期范围
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);  // 设置时间为当天的0点
+                const lastCommitDate = new Date('${endDate}');
+                lastCommitDate.setHours(0, 0, 0, 0);  // 设置时间为当天的0点
+
                 document.getElementById('startDate').value = '${startDate}';
                 document.getElementById('endDate').value = '${endDate}';
-                document.getElementById('timeRange').value = 'custom';  // 固定显示为Custom Range
+                
+                // 如果最后一次提交是今天，则设置为"Last Week"
+                if (lastCommitDate.getTime() === today.getTime()) {
+                    document.getElementById('timeRange').value = '7';  // Last Week
+                } else {
+                    document.getElementById('timeRange').value = 'custom';  // Custom Range
+                }
 
-                // 创建图表函数
+                // 创建提交图表
                 function createCommitChart(data) {
                     const ctx = document.getElementById('commitChart');
                     if (commitChart) {
@@ -430,6 +441,7 @@ export class ContributionVisualization {
                     });
                 }
 
+                // 创建变更图表
                 function createChangeChart(data) {
                     const ctx = document.getElementById('changeChart');
                     if (changeChart) {
@@ -480,6 +492,7 @@ export class ContributionVisualization {
                     });
                 }
 
+                // 创建饼图
                 function createPieChart(data) {
                     const ctx = document.getElementById('pieChart');
                     const totalCommits = data.datasets.reduce((acc, dataset) => {
@@ -530,6 +543,7 @@ export class ContributionVisualization {
                     });
                 }
 
+                // 创建Lines Changed饼图
                 function createLinesChangedPieChart(data) {
                     const ctx = document.getElementById('linesChangedPieChart');
                     const totalLines = data.datasets.reduce((acc, dataset) => {
