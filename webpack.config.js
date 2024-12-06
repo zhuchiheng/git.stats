@@ -2,25 +2,29 @@
 'use strict';
 
 const path = require('path');
+const TerserPlugin = require('terser-webpack-plugin');
 
 /** @type {import('webpack').Configuration} */
 const config = {
   target: 'node',
-  mode: 'none',
+  mode: 'production',
   entry: './src/extension.ts',
   output: {
     path: path.resolve(__dirname, 'dist'),
     filename: 'extension.js',
-    libraryTarget: 'commonjs2'
+    libraryTarget: 'commonjs2',
+    clean: true
   },
   externals: {
     vscode: 'commonjs vscode',
-    // 不打包这些依赖，因为它们在运行时会被正确加载
     'simple-git': 'commonjs simple-git',
-    'moment': 'commonjs moment'
+    'moment': 'commonjs moment',
+    'fs': 'commonjs fs',
+    'path': 'commonjs path'
   },
   resolve: {
-    extensions: ['.ts', '.js']
+    extensions: ['.ts', '.js'],
+    mainFields: ['module', 'main']
   },
   module: {
     rules: [
@@ -29,16 +33,46 @@ const config = {
         exclude: /node_modules/,
         use: [
           {
-            loader: 'ts-loader'
+            loader: 'ts-loader',
+            options: {
+              compilerOptions: {
+                sourceMap: false
+              }
+            }
           }
         ]
       }
     ]
   },
-  devtool: 'nosources-source-map',
-  infrastructureLogging: {
-    level: "log",
+  optimization: {
+    minimize: true,
+    minimizer: [
+      new TerserPlugin({
+        terserOptions: {
+          format: {
+            comments: false,
+          },
+          compress: {
+            drop_console: true,
+            dead_code: true,
+            unused: true
+          }
+        },
+        extractComments: false
+      })
+    ]
   },
+  performance: {
+    hints: 'warning'
+  },
+  stats: {
+    assets: true,
+    colors: true,
+    errors: true,
+    errorDetails: true,
+    modules: false
+  },
+  devtool: 'hidden-source-map'
 };
 
 module.exports = config;
