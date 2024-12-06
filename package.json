@@ -2,7 +2,7 @@
   "name": "git-stats",
   "displayName": "Git Stats",
   "description": "Beautiful visualization of team code contributions with interactive charts and insights",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "lixianmin",
   "author": {
     "name": "lixianmin"
