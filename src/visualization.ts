@@ -65,12 +65,22 @@ export class ContributionVisualization {
         const commitData = this.prepareCommitData(authors, dates);
         const changeData = this.prepareChangeData(authors, dates);
 
+        // 准备作者统计信息
+        const authorStats = authors.map(author => ({
+            author: author.author,
+            totalCommits: author.totalCommits || 0,
+            totalInsertions: author.totalInsertions || 0,
+            totalDeletions: author.totalDeletions || 0,
+            totalFiles: author.totalFiles || 0
+        }));
+
         // 更新图表数据
         if (this.panel) {
             await this.panel.webview.postMessage({
                 command: 'updateData',
                 commitData: commitData,
-                changeData: changeData
+                changeData: changeData,
+                authorStats: authorStats
             });
         }
     }
@@ -615,6 +625,35 @@ export class ContributionVisualization {
                                 changeChart.data = message.changeData;
                                 changeChart.update();
                                 createLinesChangedPieChart(message.changeData);
+                            }
+
+                            // 更新summary表格
+                            const summaryTable = document.querySelector('.summary-table');
+                            if (summaryTable && message.authorStats) {
+                                // 保留表头
+                                const tableHeader = summaryTable.querySelector('tr');
+                                if (tableHeader) {
+                                    summaryTable.innerHTML = '';
+                                    summaryTable.appendChild(tableHeader);
+
+                                    // 使用后端发送的准确统计数据
+                                    message.authorStats.forEach(authorStat => {
+                                        const row = document.createElement('tr');
+                                        const cells = [
+                                            authorStat.author,
+                                            authorStat.totalCommits || 0,
+                                            authorStat.totalInsertions || 0,
+                                            authorStat.totalDeletions || 0,
+                                            authorStat.totalFiles || 0
+                                        ];
+                                        cells.forEach(value => {
+                                            const cell = document.createElement('td');
+                                            cell.textContent = value.toString();
+                                            row.appendChild(cell);
+                                        });
+                                        summaryTable.appendChild(row);
+                                    });
+                                }
                             }
                             break;
                     }

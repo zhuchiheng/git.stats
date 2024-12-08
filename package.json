@@ -2,7 +2,7 @@
   "name": "git-stats",
   "displayName": "Git Stats",
   "description": "Beautiful visualization of team code contributions with interactive charts and insights",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publisher": "lixianmin",
   "author": {
     "name": "lixianmin"
@@ -43,9 +43,19 @@
     "commands": [
       {
         "command": "git-stats.showStats",
-        "title": "Show Git Stats"
+        "title": "Show Git Stats",
+        "icon": "$(graph-line)"
       }
-    ]
+    ],
+    "menus": {
+      "scm/title": [
+        {
+          "when": "scmProvider == git",
+          "command": "git-stats.showStats",
+          "group": "navigation"
+        }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run package",
