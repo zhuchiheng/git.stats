@@ -326,6 +326,30 @@ export class GitContributionAnalyzer {
                 }
             }
 
+            // 在返回的 stats 对象中，需要确保包含整个日期范围
+            for (const author in stats) {
+                // 确保 startDate 和 endDate 被正确设置到返回的统计对象中
+                stats[author].startDate = startDate;
+                stats[author].endDate = endDate;
+            }
+
+            // 在返回统计之前，确保每个作者的统计数据包含完整的日期范围
+            for (const author in stats) {
+                const currentDate = startDate.clone();
+                while (currentDate.isSameOrBefore(endDate, 'day')) {
+                    const dateKey = currentDate.format('YYYY-MM-DD');
+                    if (!stats[author].dailyStats[dateKey]) {
+                        stats[author].dailyStats[dateKey] = {
+                            commits: 0,
+                            insertions: 0,
+                            deletions: 0,
+                            files: 0
+                        };
+                    }
+                    currentDate.add(1, 'day');
+                }
+            }
+
             return stats;
         } catch (error) {
             console.error('Error analyzing git log:', error);

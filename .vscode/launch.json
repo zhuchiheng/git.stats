@@ -11,7 +11,9 @@
             "outFiles": [
                 "${workspaceFolder}/dist/*.js"
             ],
-            "preLaunchTask": "npm: watch"
+            "preLaunchTask": "npm: watch",
+            "trace": true,           // 启用更详细的调试跟踪
+            "internalConsoleOptions": "openOnSessionStart"  // 自动打开调试控制台
         },
         {
             "name": "Extension Tests",

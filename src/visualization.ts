@@ -719,14 +719,16 @@ export class ContributionVisualization {
     }
 
     private getAllDates(stats: { [author: string]: AuthorStats }): string[] {
-        const startDate = moment.utc(Object.values(stats)[0]?.startDate);
-        const endDate = moment.utc(Object.values(stats)[0]?.endDate);
+        // 不使用 UTC，保持本地时间
+        const startDate = moment(Object.values(stats)[0]?.startDate).startOf('day');
+        const endDate = moment(Object.values(stats)[0]?.endDate).endOf('day');
         const dates: string[] = [];
 
-        console.log('Date range:', startDate.format(), 'to', endDate.format());
+        console.log('Date range:', startDate.format('YYYY-MM-DD HH:mm:ss'), 'to', endDate.format('YYYY-MM-DD HH:mm:ss'));
 
         let currentDate = startDate.clone();
-        while (currentDate.isSameOrBefore(endDate)) {
+        // 使用 isSameOrBefore 时指定比较单位为 'day'
+        while (currentDate.isSameOrBefore(endDate, 'day')) {
             dates.push(currentDate.format('YYYY-MM-DD'));
             currentDate.add(1, 'day');
         }
