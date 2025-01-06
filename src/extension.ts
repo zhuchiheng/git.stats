@@ -73,19 +73,6 @@ export function activate(context: vscode.ExtensionContext) {
                 const stats = await gitAnalyzer.getContributionStats();
                 await visualization.show(stats);
             });
-
-            // 监听时间范围变化
-            visualization.onTimeRangeChange(async (days: number, startDate?: string, endDate?: string) => {
-                vscode.window.withProgress({
-                    location: vscode.ProgressLocation.Notification,
-                    title: "Updating statistics...",
-                    cancellable: false
-                }, async () => {
-                    const newStats = await gitAnalyzer.getContributionStats(days, startDate, endDate);
-                    await visualization.updateStats(newStats);
-                });
-            });
-
         } catch (error) {
             vscode.window.showErrorMessage('Error analyzing Git history: ' + error);
             // console.error('Error:', error);

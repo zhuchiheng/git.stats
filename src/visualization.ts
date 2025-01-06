@@ -6,20 +6,14 @@ import moment from 'moment';
 export class ContributionVisualization {
     private panel: vscode.WebviewPanel | undefined;
     private disposables: vscode.Disposable[] = [];
-    private timeRangeChangeCallback?: (days: number) => void;
-    private analyzer: GitContributionAnalyzer;
 
-    constructor(private context: vscode.ExtensionContext, analyzer: GitContributionAnalyzer) {
-        this.analyzer = analyzer;
+    constructor(private context: vscode.ExtensionContext, private analyzer: GitContributionAnalyzer) {
+
     }
 
     public dispose() {
         this.panel?.dispose();
         this.disposables.forEach(d => d.dispose());
-    }
-
-    public onTimeRangeChange(callback: (days: number) => void) {
-        this.timeRangeChangeCallback = callback;
     }
 
     public async update(stats: { [author: string]: AuthorStats }) {
