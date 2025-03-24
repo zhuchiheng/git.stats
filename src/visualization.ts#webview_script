@@ -1,0 +1,17 @@
+// 修改开发者选择事件处理，添加时间范围参数
+const developerSelect = document.getElementById('developerSelect');
+developerSelect.addEventListener('change', function(e) {
+    const developer = this.value;
+    const timeRangeValue = timeRangeSelect.value;
+    const currentStartDate = startDateInput.value;
+    const currentEndDate = endDateInput.value;
+    const days = timeRangeValue !== 'custom' ? parseInt(timeRangeValue) : undefined;
+
+    vscode.postMessage({
+        command: 'developerChanged',
+        developer: developer,
+        days: days,
+        startDate: currentStartDate,
+        endDate: currentEndDate
+    });
+});

@@ -32,17 +32,22 @@ export class ContributionVisualization {
 
         const authors = Object.values(stats);
         const dates = this.getAllDates(stats);
+        const hours = this.getHoursArray();
 
         // 准备数据
         const commitData = this.prepareCommitData(authors, dates);
         const changeData = this.prepareChangeData(authors, dates);
+        const hourlyCommitData = this.prepareHourlyCommitData(authors, hours);
+        const hourlyChangeData = this.prepareHourlyChangeData(authors, hours);       
 
         // 更新图表数据
         if (this.panel?.webview) {
             this.panel.webview.postMessage({
                 command: 'updateData',
                 commitData,
-                changeData
+                changeData,
+                hourlyCommitData,
+                hourlyChangeData
             });
         }
     }
@@ -54,10 +59,14 @@ export class ContributionVisualization {
 
         const authors = Object.values(stats);
         const dates = this.getAllDates(stats);
+        const hours = this.getHoursArray();
 
         // 准备数据
         const commitData = this.prepareCommitData(authors, dates);
         const changeData = this.prepareChangeData(authors, dates);
+        const hourlyCommitData = this.prepareHourlyCommitData(authors, hours);
+        const hourlyChangeData = this.prepareHourlyChangeData(authors, hours);
+        const calendarData = this.prepareCalendarData(authors, dates); // 新增日历数据
 
         // 准备作者统计信息
         const authorStats = authors.map(author => ({
@@ -74,19 +83,36 @@ export class ContributionVisualization {
                 command: 'updateData',
                 commitData: commitData,
                 changeData: changeData,
-                authorStats: authorStats
+                hourlyCommitData: hourlyCommitData,
+                hourlyChangeData: hourlyChangeData,
+                authorStats: authorStats,
+                calendarData // 新增日历数据
             });
         }
     }
 
-    private async handleTimeRangeChange(days: number, startDate?: string, endDate?: string) {
+    private globalCache: { [author: string]: AuthorStats } = {};
+
+    public async handleTimeRangeChange(days: number, startDate?: string, endDate?: string) {
         try {
-            // 获取新的统计数据
-            const stats = await this.analyzer.getContributionStats(days, startDate, endDate);
-            // 更新可视化
-            await this.update(stats);
+            // 获取完整的时间范围数据并缓存
+            this.globalCache = await this.analyzer.getContributionStats(days, startDate, endDate);
+            // 应用当前开发者过滤
+            await this.applyDeveloperFilter();
         } catch (error) {
             console.error('Error updating time range:', error);
+        }
+    }
+
+    private async applyDeveloperFilter(developer?: string) {
+        try {
+            const filteredStats = developer && developer !== 'all' 
+                ? { [developer]: this.globalCache[developer] } 
+                : this.globalCache;
+            
+            await this.update(filteredStats);
+        } catch (error) {
+            console.error('Error applying developer filter:', error);
         }
     }
 
@@ -116,7 +142,16 @@ export class ContributionVisualization {
                 async message => {
                     switch (message.command) {
                         case 'timeRangeChanged':
-                            await this.handleTimeRangeChange(message.days, message.startDate, message.endDate);
+                            await this.handleTimeRangeChange(
+                                message.days,
+                                message.startDate,
+                                message.endDate
+                            );
+                            break;
+                        case 'developerChanged':
+                            await this.handleDeveloperChange(
+                                message.developer
+                            );
                             break;
                     }
                 },
@@ -134,18 +169,32 @@ export class ContributionVisualization {
         const changeData = this.prepareChangeData(Object.values(stats), dates);
         console.log('Prepared change data:', changeData);
 
+        const hourlyCommitData = this.prepareHourlyCommitData(Object.values(stats), this.getHoursArray());
+        console.log('Prepared hourly commit data:', hourlyCommitData);
+
+        const hourlyChangeData = this.prepareHourlyChangeData(Object.values(stats), this.getHoursArray());
+        console.log('Prepared hourly change data:', hourlyChangeData);
+
         if (this.panel) {
-            this.panel.webview.html = this.getWebviewContent(stats, commitData, changeData);
+            this.panel.webview.html = this.getWebviewContent(stats, commitData, changeData, hourlyCommitData, hourlyChangeData);
         }
     }
 
-    private getWebviewContent(stats: { [author: string]: AuthorStats }, commitData: any, changeData: any): string {
+    private async handleDeveloperChange(developer: string) {
+        try {
+            // 直接从缓存过滤数据
+            await this.applyDeveloperFilter(developer);
+        } catch (error) {
+            console.error('Error updating developer:', error);
+        }
+    }
+
+    private getWebviewContent(stats: { [author: string]: AuthorStats }, commitData: any, changeData: any, hourlyCommitData: any, hourlyChangeData: any): string {
         const authors = Object.values(stats);
         const dates = this.getAllDates(stats);
 
-        // 使用最后一次commit日期作为结束日期，往前推7天作为开始日期
-        const endDate = moment(authors[0]?.endDate).format('YYYY-MM-DD');
-        const startDate = moment(authors[0]?.endDate).subtract(6, 'days').format('YYYY-MM-DD');
+        // 准备日历数据
+        const calendarData = this.prepareCalendarData(authors, dates);
 
         return `<!DOCTYPE html>
         <html>
@@ -160,7 +209,7 @@ export class ContributionVisualization {
                 }
                 .container {
                     padding: 20px;
-                    max-width: 1200px;
+                    max-width: 1600px;
                     margin: 0 auto;
                     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
                 }
@@ -192,6 +241,15 @@ export class ContributionVisualization {
                 .chart-container {
                     position: relative;
                     height: 400px;
+                    margin-bottom: 20px;
+                    background-color: var(--vscode-editor-background);
+                    padding: 15px;
+                    border-radius: 8px;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                }
+                .calendar-container {
+                    position: relative;
+                    height: 900px;
                     margin-bottom: 20px;
                     background-color: var(--vscode-editor-background);
                     padding: 15px;
@@ -278,20 +336,43 @@ export class ContributionVisualization {
                             <option value="365">Last Year</option>
                         </select>
                     </div>
+                    <div class="developer-selector"> <!-- 新增开发者选择器 -->
+                        <select id="developerSelect">
+                            <option value="all">All developers</option>
+                            ${authors.map(author => `<option value="${author.author}">${author.author}</option>`).join('')}
+                        </select>
+                    </div>
                 </div>
+                <!-- Daily Charts -->
                 <div class="chart-container">
                     <div class="pie-chart-container">
                         <canvas id="pieChart"></canvas>
                     </div>
-                    <h2 class="chart-title">Commits</h2>
+                    <h2 class="chart-title">Daily Commits</h2>
                     <canvas id="commitChart"></canvas>
                 </div>
                 <div class="chart-container">
                     <div class="pie-chart-container">
                         <canvas id="linesChangedPieChart"></canvas>
                     </div>
-                    <h2 class="chart-title">Lines Changed</h2>
+                    <h2 class="chart-title">Daily Lines Changed</h2>
                     <canvas id="changeChart"></canvas>
+                </div>
+
+                <!-- Hourly Charts -->
+                <div class="chart-container">
+                    <h2 class="chart-title">Hourly Commits</h2>
+                    <canvas id="hourlyCommitChart"></canvas>
+                </div>
+                <div class="chart-container">
+                    <h2 class="chart-title">Hourly Lines Changes</h2>
+                    <canvas id="hourlyChangeChart"></canvas>
+                </div>
+
+                <!-- 日历图表 -->
+                <div class="calendar-container">
+                    <h2 class="chart-title">Contribution Calendar</h2>
+                    <div id="calendar" style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; max-height: 800px; overflow-y: auto; padding: 4px;"></div>
                 </div>
 
                 <h2>Summary</h2>
@@ -371,15 +452,17 @@ export class ContributionVisualization {
                 // 解析数据
                 const commitData = ${JSON.stringify(commitData)};
                 const changeData = ${JSON.stringify(changeData)};
+                const hourlyCommitData = ${JSON.stringify(hourlyCommitData)};
+                const hourlyChangeData = ${JSON.stringify(hourlyChangeData)};
 
                 // 设置初始日期范围
                 const today = new Date();
                 today.setHours(0, 0, 0, 0);  // 设置时间为当天的0点
-                const lastCommitDate = new Date('${endDate}');
+                const lastCommitDate = new Date(endDate);
                 lastCommitDate.setHours(0, 0, 0, 0);  // 设置时间为当天的0点
 
-                document.getElementById('startDate').value = '${startDate}';
-                document.getElementById('endDate').value = '${endDate}';
+                document.getElementById('startDate').value = startDate;
+                document.getElementById('endDate').value = endDate;
                 
                 // 如果最后一次提交是今天，则设置为"Last Week"
                 if (lastCommitDate.getTime() === today.getTime()) {
@@ -598,13 +681,112 @@ export class ContributionVisualization {
                     });
                 }
 
+                function createHourlyCommitChart(data) {
+                    const ctx = document.getElementById('hourlyCommitChart');
+                    const existingChart = Chart.getChart(ctx);
+                    if (existingChart) {
+                        existingChart.destroy();
+                    }
+                    
+                    new Chart(ctx, {
+                        type: 'line',
+                        data: data,
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            interaction: {
+                                intersect: false,
+                                mode: 'index'
+                            },
+                            plugins: {
+                                legend: {
+                                    position: 'top',
+                                },
+                                tooltip: {
+                                    callbacks: {
+                                        label: function(context) {
+                                            return context.dataset.label + ': ' + context.raw + ' commits';
+                                        }
+                                    }
+                                }
+                            },
+                            scales: {
+                                x: {
+                                    title: {
+                                        display: true,
+                                        text: 'Hour'
+                                    }
+                                },
+                                y: {
+                                    beginAtZero: true,
+                                    title: {
+                                        display: true,
+                                        text: 'Number of Commits'
+                                    }
+                                }
+                            }
+                        }
+                    });
+                }
+
+                function createHourlyChangeChart(data) {
+                    const ctx = document.getElementById('hourlyChangeChart');
+                    const existingChart = Chart.getChart(ctx);
+                    if (existingChart) {
+                        existingChart.destroy();
+                    }
+                    
+                    new Chart(ctx, {
+                        type: 'bar',
+                        data: data,
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            interaction: {
+                                intersect: false,
+                                mode: 'index'
+                            },
+                            plugins: {
+                                legend: {
+                                    position: 'top',
+                                },
+                                tooltip: {
+                                    callbacks: {
+                                        label: function(context) {
+                                            return context.dataset.label + ': ' + context.raw + ' lines changed';
+                                        }
+                                    }
+                                }
+                            },
+                            scales: {
+                                x: {
+                                    title: {
+                                        display: true,
+                                        text: 'Hour'
+                                    }
+                                },
+                                y: {
+                                    beginAtZero: true,
+                                    title: {
+                                        display: true,
+                                        text: 'Lines Changed'
+                                    },
+                                    stacked: true  // 启用堆叠效果
+                                }
+                            }
+                        }
+                    });
+                }
+
                 // 初始化所有图表
                 createCommitChart(commitData);
                 createChangeChart(changeData);
                 createPieChart(commitData);
                 createLinesChangedPieChart(changeData);
+                createHourlyCommitChart(hourlyCommitData);  // 创建每小时提交次数图表
+                createHourlyChangeChart(hourlyChangeData);  // 创建每小时代码变更行数图表
 
-                // 监听来自 VS Code 的消息
+                // 更新图表数据的消息处理
                 window.addEventListener('message', event => {
                     const message = event.data;
                     switch (message.command) {
@@ -619,6 +801,17 @@ export class ContributionVisualization {
                                 changeChart.data = message.changeData;
                                 changeChart.update();
                                 createLinesChangedPieChart(message.changeData);
+                            }
+                            
+                            if (message.hourlyCommitData) {
+                                createHourlyCommitChart(message.hourlyCommitData);
+                            }
+                            if (message.hourlyChangeData) {
+                                createHourlyChangeChart(message.hourlyChangeData);
+                            }
+
+                            if (message.calendarData) {
+                                renderCalendar(message.calendarData);
                             }
 
                             // 更新summary表格
@@ -707,6 +900,116 @@ export class ContributionVisualization {
 
                 startDateInput.addEventListener('change', handleDateChange);
                 endDateInput.addEventListener('change', handleDateChange);
+
+                // 预定义星期标题HTML (字符串格式)
+                const WEEKDAYS_HEADER_HTML = '<div style="display: grid; grid-template-columns: repeat(7, 1fr); margin-bottom: 8px; font-weight: 500;">' +
+                    ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
+                        .map(day => '<div style="text-align: center">' + day + '</div>')
+                        .join('') +
+                    '</div>';
+
+                // 渲染日历
+                function renderCalendar(calendarData) {
+                    const container = document.getElementById('calendar');
+                    if (!container) return;
+
+                    // 清空容器
+                    container.innerHTML = "";
+
+                    // 创建横向日历容器
+                    const calendarWrapper = document.createElement('div');
+                    calendarWrapper.style.display = 'grid';
+                    calendarWrapper.style.gridTemplateColumns = 'repeat(8, 1fr)';
+                    calendarWrapper.style.gap = '8px';
+                    calendarWrapper.style.padding = '8px';
+
+                    // 按月份分组数据
+                    const months = {};
+                    calendarData.forEach(day => {
+                        const date = new Date(day.date);
+                        const month = date.toLocaleString('default', { month: 'long', year: 'numeric' });
+                        if (!months[month]) {
+                            months[month] = [];
+                        }
+                        months[month].push(day);
+                    });
+
+                    // 渲染每个月
+                    Object.entries(months).forEach(([month, days]) => {
+                        // 创建月份容器
+                        const monthContainer = document.createElement('div');
+                        monthContainer.style.display = 'flex';
+                        monthContainer.style.flexDirection = 'column';
+                        monthContainer.style.gap = '4px';
+
+                        // 添加月份标题
+                        const monthHeader = document.createElement('div');
+                        monthHeader.textContent = month;
+                        monthHeader.style.fontWeight = '500';
+                        monthHeader.style.marginBottom = '8px';
+                        monthContainer.appendChild(monthHeader);
+
+                        // 使用预定义的星期标题
+                        const weekRow = document.createElement('div');
+                        weekRow.innerHTML = WEEKDAYS_HEADER_HTML;
+                        monthContainer.appendChild(weekRow);
+
+                        // 创建日期网格
+                        const gridContainer = document.createElement('div');
+                        gridContainer.style.display = 'grid';
+                        gridContainer.style.gridTemplateColumns = 'repeat(7, 1fr)';
+                        gridContainer.style.gap = '2px';
+
+                        // 填充空白格
+                        const firstDay = new Date(days[0].date);
+                        const startDay = firstDay.getDay();
+                        for (let i = 0; i < startDay; i++) {
+                            const empty = document.createElement('div');
+                            gridContainer.appendChild(empty);
+                        }
+
+                        // 添加日期格
+                        days.forEach(day => {
+                            const cell = document.createElement('div');
+                            cell.style.backgroundColor = day.totalCommits > 0 
+                                ? \`rgba(46, 204, 113, \${day.colorIntensity * 0.2})\`
+                                : 'transparent';
+                            cell.style.width = '24px';
+                            cell.style.height = '24px';
+                            cell.style.borderRadius = '4px';
+                            cell.style.display = 'flex';
+                            cell.style.alignItems = 'center';
+                            cell.style.justifyContent = 'center';
+                            cell.style.fontSize = '12px';
+                            cell.title = \`Date: \${day.date}, Commits: \${day.totalCommits}\`;
+                            
+                            const dateNum = new Date(day.date).getDate();
+                            cell.textContent = dateNum;
+                            
+                            gridContainer.appendChild(cell);
+                        });
+
+                        monthContainer.appendChild(gridContainer);
+                        calendarWrapper.appendChild(monthContainer);
+                    });
+
+                    container.appendChild(calendarWrapper);
+                }
+
+                // 初始化日历
+                const calendarData = ${JSON.stringify(calendarData)};
+                renderCalendar(calendarData);
+
+                // 新增开发者选择变化处理
+                const developerSelect = document.getElementById('developerSelect');
+                developerSelect.addEventListener('change', function(e) {
+                    const developer = this.value;
+                    vscode.postMessage({
+                        command: 'developerChanged',
+                        developer: developer
+                    });
+                });
+
             </script>
         </body>
         </html>`;
@@ -728,6 +1031,10 @@ export class ContributionVisualization {
         }
 
         return dates;
+    }
+
+    private getHoursArray(): string[] {
+        return Array.from({length: 24}, (_, i) => i.toString().padStart(2, '0'));
     }
 
     private prepareCommitData(authors: AuthorStats[], dates: string[]) {
@@ -772,6 +1079,47 @@ export class ContributionVisualization {
             labels: dates,
             datasets
         };
+    }
+
+    private prepareHourlyCommitData(authors: AuthorStats[], hours: string[]) {
+        return {
+            labels: hours.map(h => `${h}:00`),
+            datasets: authors.filter(a => !a.author.toLowerCase().includes('stash')).map((author, i) => ({
+                label: author.author,
+                data: hours.map(h => author.hourlyStats[h]?.commits || 0),
+                borderColor: this.getColor(i),
+                backgroundColor: this.getColor(i),
+                fill: false,
+                tension: 0.4
+            }))
+        };
+    }
+
+    private prepareHourlyChangeData(authors: AuthorStats[], hours: string[]) {
+        return {
+            labels: hours.map(h => `${h}:00`),
+            datasets: authors.filter(a => !a.author.toLowerCase().includes('stash')).map((author, i) => ({
+                label: author.author,
+                data: hours.map(h => {
+                    const s = author.hourlyStats[h];
+                    return (s?.insertions || 0) + (s?.deletions || 0);
+                }),
+                backgroundColor: this.getColor(i),
+                stack: 'combined'  // 添加堆叠效果
+            }))
+        };
+    }
+
+    private prepareCalendarData(authors: AuthorStats[], dates: string[]): { date: string, totalCommits: number, colorIntensity: number }[] {
+        const calendarData = dates.map(date => {
+            const totalCommits = authors.reduce((sum, author) => sum + (author.dailyStats[date]?.commits || 0), 0);
+            return {
+                date,
+                totalCommits,
+                colorIntensity: Math.min(4, Math.floor(totalCommits / 5)) // 将提交数量映射到颜色强度（0-4）
+            };
+        });
+        return calendarData;
     }
 
     private getColor(index: number): string {

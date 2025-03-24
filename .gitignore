@@ -12,7 +12,6 @@ modern.jsonp
 resources/sass/.sass-cache/
 resources/.arch-internal-preview.css
 .arch-internal-preview.css
-node_modules/
 
 # Dependencies
 package-lock.json

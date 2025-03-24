@@ -20,6 +20,7 @@ export interface AuthorStats {
     totalDeletions: number;
     totalFiles: number;
     dailyStats: { [date: string]: DailyStats };
+    hourlyStats: { [hour: string]: DailyStats };
 }
 
 export interface GitAnalyzerConfig {
@@ -171,12 +172,17 @@ export class GitContributionAnalyzer {
         }
 
         // 如果获取失败，返回当前时间
-        const currentTime = moment();
+                const currentTime = moment();
         console.log('Using current time as fallback:', currentTime.format('YYYY-MM-DD HH:mm:ss'));
         return currentTime;
     }
 
-    async getContributionStats(days: number = 7, startDateStr?: string, endDateStr?: string): Promise<{ [author: string]: AuthorStats }> {
+    public async getContributionStatsForDeveloper(developer: string, days?: number, startDate?: string, endDate?: string): Promise<{ [author: string]: AuthorStats }> {
+        // 同时应用开发者过滤和时间范围参数
+        return await this.getContributionStats(days, startDate, endDate, developer);
+    }
+
+    async getContributionStats(days: number = 7, startDateStr?: string, endDateStr?: string, authorFilter?: string): Promise<{ [author: string]: AuthorStats }> {
         console.log(`Starting contribution analysis for the last ${days} days`);
         console.log(`Repository path: ${this.repoPath}`);
         console.log('Custom date range:', startDateStr, 'to', endDateStr);
@@ -212,20 +218,27 @@ export class GitContributionAnalyzer {
         console.log(`Analyzing commits from ${startDate.format('YYYY-MM-DD HH:mm:ss')} to ${endDate.format('YYYY-MM-DD HH:mm:ss')}`);
 
         try {
-            const logs = await this.git.log([
-                '--all',                    // 获取所有分支
-                '--no-merges',              // 不包括合并提交
-                '--numstat',                // 获取更改统计
-                '--date=iso-strict',        // ISO格式的日期
-                '--pretty=format:commit %H%n%an%n%aI%n%s%n',  // 自定义输出格式
-                '--since', startDate.format('YYYY-MM-DD HH:mm:ss'),  // 使用精确时间
-                '--until', endDate.format('YYYY-MM-DD HH:mm:ss'),    // 使用精确时间
-                '--invert-grep',            // 反向匹配，排除匹配的提交
-                '--grep=^WIP',              // 排除 WIP 提交
-                '--grep=^stash',            // 排除 stash 提交
-                '--grep=^\\[STASH\\]',      // 排除 [STASH] 提交
-                '--grep=^\\[stash\\]'       // 排除 [stash] 提交
-            ]);
+            const logArgs = [
+                '--all',
+                '--no-merges',
+                '--numstat',
+                '--date=iso-strict',
+                '--pretty=format:commit %H%n%an%n%aI%n%s%n',
+                '--since', startDate.format('YYYY-MM-DD HH:mm:ss'),
+                '--until', endDate.format('YYYY-MM-DD HH:mm:ss'),
+                '--invert-grep',
+                '--grep=^WIP',
+                '--grep=^stash', 
+                '--grep=^\\[STASH\\]',
+                '--grep=^\\[stash\\]'
+            ];
+
+            // 添加作者过滤条件
+            if (authorFilter && authorFilter !== 'all') {
+                logArgs.push('--author=' + authorFilter);
+            }
+
+            const logs = await this.git.log(logArgs);
 
             if (!logs || !logs.all || logs.all.length === 0) {
                 console.log('No commits found in the specified date range');
@@ -277,7 +290,8 @@ export class GitContributionAnalyzer {
                         totalInsertions: 0,
                         totalDeletions: 0,
                         totalFiles: 0,
-                        dailyStats: {}
+                        dailyStats: {},
+                        hourlyStats: {}
                     };
                 }
 
@@ -292,9 +306,22 @@ export class GitContributionAnalyzer {
                     };
                 }
 
+                // 初始化小时统计
+                const hourKey = date.format('HH');  // 只使用小时部分，改为 HH 格式
+                if (!stats[author].hourlyStats[hourKey]) {
+                    stats[author].hourlyStats[hourKey] = {
+                        commits: 0,
+                        insertions: 0,
+                        deletions: 0,
+                        files: 0
+                    };
+                }
+
+
                 // 更新提交计数
                 stats[author].totalCommits++;
                 stats[author].dailyStats[dateKey].commits++;
+                stats[author].hourlyStats[hourKey].commits++;
 
                 // 解析文件变更统计
                 // 跳过提交信息的4行，后面都是文件统计
@@ -323,6 +350,10 @@ export class GitContributionAnalyzer {
                     stats[author].dailyStats[dateKey].insertions += insertions;
                     stats[author].dailyStats[dateKey].deletions += deletions;
                     stats[author].dailyStats[dateKey].files++;
+
+                    stats[author].hourlyStats[hourKey].insertions += insertions;
+                    stats[author].hourlyStats[hourKey].deletions += deletions;
+                    stats[author].hourlyStats[hourKey].files++;
                 }
             }
 
@@ -350,6 +381,22 @@ export class GitContributionAnalyzer {
                 }
             }
 
+            // 替换原有的小时范围初始化代码
+            for (const author in stats) {
+                // 为每个小时创建统计项
+                for (let hour = 0; hour < 24; hour++) {
+                    const hourKey = hour.toString().padStart(2, '0');
+                    if (!stats[author].hourlyStats[hourKey]) {
+                        stats[author].hourlyStats[hourKey] = {
+                            commits: 0,
+                            insertions: 0,
+                            deletions: 0,
+                            files: 0
+                        };
+                    }
+                }
+            }
+
             return stats;
         } catch (error) {
             console.error('Error analyzing git log:', error);
@@ -359,10 +406,6 @@ export class GitContributionAnalyzer {
 
     async analyzeRepository(repoPath: string, startDate: moment.Moment, endDate: moment.Moment): Promise<{ [author: string]: AuthorStats }> {
         this.repoPath = repoPath;
-        // console.log(`\n=== Starting repository analysis ===`);
-        // console.log(`Repository path: ${repoPath}`);
-        // console.log(`Date range: ${startDate.format('YYYY-MM-DD')} to ${endDate.format('YYYY-MM-DD')}`);
-
         const git = simpleGit(repoPath);
         const stats: { [author: string]: AuthorStats } = {};
 
@@ -373,61 +416,51 @@ export class GitContributionAnalyzer {
                 '--all',
                 '--no-merges',
                 '--numstat',
-                '--format=commit:%H%nauthor:%aN%nemail:%aE%ndate:%aI'
+                '--format=commit:%H%nauthor:%aN%nemail:%aE%ndate:%aI',
+                '--since', startDate.format('YYYY-MM-DD HH:mm:ss'),
+                '--until', endDate.format('YYYY-MM-DD HH:mm:ss')
             ]);
 
-            // console.log('\n=== Git log output ===');
-
-            // 按提交分割
             const commits = result.split('\ncommit:').filter(c => c.trim());
-            // console.log(`Found ${commits.length} commits`);
 
             for (const commitData of commits) {
                 const lines = commitData.trim().split('\n');
-                let author = '', email = '', dateStr = '';
+                let author = '', email = '', dateStr = '', hash = '';
                 let insertions = 0, deletions = 0, filesChanged = 0;
 
                 // 解析提交头部信息
                 for (const line of lines) {
-                    if (line.startsWith('author:')) {
+                    if (line.startsWith('commit:')) {
+                        hash = line.substring(7).trim();
+                    } else if (line.startsWith('author:')) {
                         author = line.substring(7).trim();
-                        // console.log('Author:', author);
                     } else if (line.startsWith('email:')) {
                         email = line.substring(6).trim();
                     } else if (line.startsWith('date:')) {
                         dateStr = line.substring(5).trim();
-                        // console.log('Date:', dateStr);
                     } else if (line.trim() && !line.startsWith('commit:')) {
                         // 解析文件统计
                         const parts = line.split('\t');
                         if (parts.length === 3) {
-                            const [ins, dels] = parts;
-                            const insCount = parseInt(ins) || 0;
-                            const delCount = parseInt(dels) || 0;
+                            const [ins, dels, file] = parts;
+                            // 检查是否应该包含此文件
+                            if (!this.shouldIncludeFile(file)) {
+                                continue;
+                            }
+                            const insCount = ins === '-' ? 0 : parseInt(ins) || 0;
+                            const delCount = dels === '-' ? 0 : parseInt(dels) || 0;
 
                             insertions += insCount;
                             deletions += delCount;
                             filesChanged++;
-
-                            // console.log(`File: ${parts[2]}, +${insCount} -${delCount}`);
                         }
                     }
                 }
 
-                // 解析日期
                 const date = moment(dateStr);
                 if (!date.isValid()) {
-                    // console.warn(`Invalid date: ${dateStr}`);
                     continue;
                 }
-
-                // 检查日期范围
-                if (date.isBefore(startDate) || date.isAfter(endDate)) {
-                    // console.log(`Commit ${hash} outside date range (${date.format()} not in ${startDate.format()} - ${endDate.format()})`);
-                    continue;
-                }
-
-                // console.log(`Changes: +${insertions} -${deletions} (${filesChanged} files)`);
 
                 // 初始化作者统计
                 if (!stats[author]) {
@@ -440,13 +473,27 @@ export class GitContributionAnalyzer {
                         totalInsertions: 0,
                         totalDeletions: 0,
                         totalFiles: 0,
-                        dailyStats: {}
+                        dailyStats: {},
+                        hourlyStats: {}
                     };
                 }
 
+                const dateKey = date.format('YYYY-MM-DD');
+                const hourKey = date.format('HH');
+
                 // 初始化日期统计
-                if (!stats[author].dailyStats[date.format('YYYY-MM-DD')]) {
-                    stats[author].dailyStats[date.format('YYYY-MM-DD')] = {
+                if (!stats[author].dailyStats[dateKey]) {
+                    stats[author].dailyStats[dateKey] = {
+                        commits: 0,
+                        insertions: 0,
+                        deletions: 0,
+                        files: 0
+                    };
+                }
+
+                // 初始化小时统计
+                if (!stats[author].hourlyStats[hourKey]) {
+                    stats[author].hourlyStats[hourKey] = {
                         commits: 0,
                         insertions: 0,
                         deletions: 0,
@@ -455,35 +502,54 @@ export class GitContributionAnalyzer {
                 }
 
                 // 更新统计
-                const totalInsertions = insertions;
-                const totalDeletions = deletions;
-                const totalFiles = filesChanged;
-
                 stats[author].totalCommits++;
-                stats[author].totalInsertions += totalInsertions;
-                stats[author].totalDeletions += totalDeletions;
-                stats[author].totalFiles += totalFiles;
+                stats[author].totalInsertions += insertions;
+                stats[author].totalDeletions += deletions;
+                stats[author].totalFiles += filesChanged;
 
-                stats[author].dailyStats[date.format('YYYY-MM-DD')].commits++;
-                stats[author].dailyStats[date.format('YYYY-MM-DD')].insertions += totalInsertions;
-                stats[author].dailyStats[date.format('YYYY-MM-DD')].deletions += totalDeletions;
-                stats[author].dailyStats[date.format('YYYY-MM-DD')].files += totalFiles;
+                stats[author].dailyStats[dateKey].commits++;
+                stats[author].dailyStats[dateKey].insertions += insertions;
+                stats[author].dailyStats[dateKey].deletions += deletions;
+                stats[author].dailyStats[dateKey].files += filesChanged;
+
+                stats[author].hourlyStats[hourKey].commits++;
+                stats[author].hourlyStats[hourKey].insertions += insertions;
+                stats[author].hourlyStats[hourKey].deletions += deletions;
+                stats[author].hourlyStats[hourKey].files += filesChanged;
             }
 
-            // console.log('\n=== Final Statistics ===');
-            // for (const [author, authorStats] of Object.entries(stats)) {
-            //     console.log(`\nAuthor: ${author}`);
-            //     console.log(`Total commits: ${authorStats.totalCommits}`);
-            //     console.log(`Total insertions: ${authorStats.totalInsertions}`);
-            //     console.log(`Total deletions: ${authorStats.totalDeletions}`);
-            //     console.log(`Total files: ${authorStats.totalFiles}`);
-            //     console.log('Daily stats:', Object.keys(authorStats.dailyStats).length, 'days');
-            // }
+            // 确保日期范围完整
+            for (const author in stats) {
+                const currentDate = startDate.clone().startOf('day');
+                while (currentDate.isSameOrBefore(endDate, 'day')) {
+                    const dateKey = currentDate.format('YYYY-MM-DD');
+                    if (!stats[author].dailyStats[dateKey]) {
+                        stats[author].dailyStats[dateKey] = {
+                            commits: 0,
+                            insertions: 0,
+                            deletions: 0,
+                            files: 0
+                        };
+                    }
+                    currentDate.add(1, 'day');
+                }
+
+                // 确保小时范围完整
+                for (let hour = 0; hour < 24; hour++) {
+                    const hourKey = hour.toString().padStart(2, '0');
+                    if (!stats[author].hourlyStats[hourKey]) {
+                        stats[author].hourlyStats[hourKey] = {
+                            commits: 0,
+                            insertions: 0,
+                            deletions: 0,
+                            files: 0
+                        };
+                    }
+                }
+            }
 
             return stats;
-
         } catch (error) {
-            // console.error('Error analyzing repository:', error);
             throw error;
         }
     }

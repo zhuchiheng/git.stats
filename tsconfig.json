@@ -1,13 +1,18 @@
 {
-    "compilerOptions": {
-        "module": "commonjs",
-        "target": "ES2020",
-        "outDir": "out",
-        "lib": ["ES2020", "DOM"],
-        "sourceMap": true,
-        "rootDir": "src",
-        "strict": true,
-        "esModuleInterop": true
-    },
-    "exclude": ["node_modules", ".vscode-test"]
+  "compilerOptions": {
+    "esModuleInterop": true,
+    "module": "commonjs",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "target": "es6",
+    "sourceMap": true,
+    "outDir": "out",
+    "rootDir": "src",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true
+  },
+  "exclude": [
+    "node_modules"
+  ]
 }
