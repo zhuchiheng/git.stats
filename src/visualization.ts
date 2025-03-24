@@ -6,6 +6,7 @@ import moment from 'moment';
 export class ContributionVisualization {
     private panel: vscode.WebviewPanel | undefined;
     private disposables: vscode.Disposable[] = [];
+    private webview: vscode.Webview | undefined;
 
     constructor(private context: vscode.ExtensionContext, private analyzer: GitContributionAnalyzer) {
 
@@ -120,6 +121,7 @@ export class ContributionVisualization {
         console.log('Showing contribution stats:', stats);
 
         if (this.panel) {
+            this.webview = this.panel.webview;
             this.panel.reveal();
         } else {
             this.panel = vscode.window.createWebviewPanel(
@@ -132,6 +134,7 @@ export class ContributionVisualization {
                     localResourceRoots: [this.context.extensionUri]
                 }
             );
+            this.webview = this.panel.webview;
 
             this.panel.onDidDispose(() => {
                 this.panel = undefined;
@@ -200,7 +203,7 @@ export class ContributionVisualization {
         <html>
         <head>
             <title>Git Stats</title>
-            <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+            <script src="${this.webview!.asWebviewUri(vscode.Uri.joinPath(this.context!.extensionUri, 'node_modules', 'chart.js', 'dist', 'chart.umd.js'))}"></script>
             <style>
                 :root {
                     --vscode-dropdown-background: var(--vscode-input-background);
@@ -587,16 +590,16 @@ export class ContributionVisualization {
                     }, 0);
                     
                     const pieData = {
-                        labels: data.datasets.map(d => d.label),
-                        datasets: [{
-                            data: data.datasets.map(d => 
-                                d.data.reduce((sum, val) => sum + val, 0)
-                            ),
-                            backgroundColor: data.datasets.map(d => d.backgroundColor),
-                            borderColor: 'rgba(0, 0, 0, 0.1)',
-                            borderWidth: 1
-                        }]
-                    };
+            labels: data.datasets.map(d => d.label),
+            datasets: [{
+                data: data.datasets.map(d => 
+                    d.data.reduce((sum, val) => sum + val, 0)
+                ),
+                backgroundColor: data.datasets.map(d => d.backgroundColor),
+                borderColor: 'rgba(0, 0, 0, 0.1)',
+                borderWidth: 1
+            }]
+        };
 
                     if (pieChart) {
                         pieChart.destroy();
