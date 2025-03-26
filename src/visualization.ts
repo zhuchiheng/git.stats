@@ -98,6 +98,16 @@ export class ContributionVisualization {
         try {
             // 获取完整的时间范围数据并缓存
             this.globalCache = await this.analyzer.getContributionStats(days, startDate, endDate);
+            
+            // 发送更新命令，包含新的开发者列表
+            if (this.panel?.webview) {
+                const authors = Object.keys(this.globalCache).filter(a => !a.toLowerCase().includes('stash'));
+                this.panel.webview.postMessage({
+                    command: 'updateDevelopers',
+                    developers: authors
+                });
+            }
+            
             // 应用当前开发者过滤
             await this.applyDeveloperFilter();
         } catch (error) {
@@ -120,9 +130,19 @@ export class ContributionVisualization {
     public async show(stats: { [author: string]: AuthorStats }) {
         console.log('Showing contribution stats:', stats);
 
+        // 初始化全局缓存
+        this.globalCache = stats;
+
         if (this.panel) {
             this.webview = this.panel.webview;
             this.panel.reveal();
+            
+            // 发送开发者列表
+            const authors = Object.keys(stats);
+            this.panel.webview.postMessage({
+                command: 'updateDevelopers',
+                developers: authors
+            });
         } else {
             this.panel = vscode.window.createWebviewPanel(
                 'codeActivityStats',
@@ -342,7 +362,9 @@ export class ContributionVisualization {
                     <div class="developer-selector"> <!-- 新增开发者选择器 -->
                         <select id="developerSelect">
                             <option value="all">All developers</option>
-                            ${authors.map(author => `<option value="${author.author}">${author.author}</option>`).join('')}
+                            ${authors.map(author => 
+                                '<option value="' + author.author + '">' + author.author + '</option>'
+                            ).join('')}
                         </select>
                     </div>
                 </div>
@@ -793,6 +815,24 @@ export class ContributionVisualization {
                 window.addEventListener('message', event => {
                     const message = event.data;
                     switch (message.command) {
+                        case 'updateDevelopers':
+                            // 更新开发者下拉列表
+                            const developerSelect = document.getElementById('developerSelect');
+                            if (developerSelect && message.developers) {
+                                const currentValue = developerSelect.value;
+                                developerSelect.innerHTML = 
+                                    '<option value="all">All developers</option>' + 
+                                    message.developers.map(author => 
+                                        '<option value="' + author + '">' + author + '</option>'
+                                    ).join('');
+                                // 保持当前选中的开发者
+                                if (currentValue && message.developers.includes(currentValue)) {
+                                    developerSelect.value = currentValue;
+                                } else {
+                                    developerSelect.value = 'all';
+                                }
+                            }
+                            break;
                         case 'updateData':
                             // 更新所有图表
                             if (commitChart) {
