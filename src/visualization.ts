@@ -215,6 +215,11 @@ export class ContributionVisualization {
     private getWebviewContent(stats: { [author: string]: AuthorStats }, commitData: any, changeData: any, hourlyCommitData: any, hourlyChangeData: any): string {
         const authors = Object.values(stats);
         const dates = this.getAllDates(stats);
+        
+        // 获取默认日期范围
+        const firstAuthor = authors[0];
+        const startDate = firstAuthor?.startDate.format('YYYY-MM-DD') || moment().subtract(6, 'days').format('YYYY-MM-DD');
+        const endDate = firstAuthor?.endDate.format('YYYY-MM-DD') || moment().format('YYYY-MM-DD');
 
         // 准备日历数据
         const calendarData = this.prepareCalendarData(authors, dates);
@@ -486,12 +491,20 @@ export class ContributionVisualization {
                 const lastCommitDate = new Date(endDate);
                 lastCommitDate.setHours(0, 0, 0, 0);  // 设置时间为当天的0点
 
-                document.getElementById('startDate').value = startDate;
-                document.getElementById('endDate').value = endDate;
+                // 设置日期选择器默认值
+                document.getElementById('startDate').value = '${startDate}';
+                document.getElementById('endDate').value = '${endDate}';
                 
-                // 如果最后一次提交是今天，则设置为"Last Week"
-                if (lastCommitDate.getTime() === today.getTime()) {
+                // 计算日期范围天数
+                const start = new Date('${startDate}');
+                const end = new Date('${endDate}');
+                const diffDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
+                
+                // 设置时间范围选择器
+                if (diffDays === 7) {
                     document.getElementById('timeRange').value = '7';  // Last Week
+                } else if (diffDays === 30) {
+                    document.getElementById('timeRange').value = '30'; // Last Month
                 } else {
                     document.getElementById('timeRange').value = 'custom';  // Custom Range
                 }
