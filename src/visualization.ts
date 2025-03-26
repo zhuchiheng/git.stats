@@ -1027,8 +1027,8 @@ export class ContributionVisualization {
                         // 添加日期格
                         days.forEach(day => {
                             const cell = document.createElement('div');
-                            cell.style.backgroundColor = day.totalCommits > 0 
-                                ? \`rgba(46, 204, 113, \${day.colorIntensity * 0.2})\`
+                                cell.style.backgroundColor = day.totalCommits > 0 
+                                ? \`rgba(46, 204, 113, \${day.colorIntensity})\`
                                 : 'transparent';
                             cell.style.width = '24px';
                             cell.style.height = '24px';
@@ -1167,12 +1167,20 @@ export class ContributionVisualization {
     }
 
     private prepareCalendarData(authors: AuthorStats[], dates: string[]): { date: string, totalCommits: number, colorIntensity: number }[] {
+        // 计算最大提交数
+        const maxCommits = dates.reduce((max, date) => {
+            const dailyCommits = authors.reduce((sum, author) => sum + (author.dailyStats[date]?.commits || 0), 0);
+            return Math.max(max, dailyCommits);
+        }, 1); // 最小为1避免除以0
+
         const calendarData = dates.map(date => {
             const totalCommits = authors.reduce((sum, author) => sum + (author.dailyStats[date]?.commits || 0), 0);
+            // 使用对数比例计算颜色强度(0-1)，使小数值也能有区分度
+            const logValue = Math.log1p(totalCommits) / Math.log1p(maxCommits);
             return {
                 date,
                 totalCommits,
-                colorIntensity: Math.min(4, Math.floor(totalCommits / 5)) // 将提交数量映射到颜色强度（0-4）
+                colorIntensity: logValue
             };
         });
         return calendarData;
