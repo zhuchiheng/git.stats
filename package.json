@@ -2,7 +2,7 @@
   "name": "git-stats-plus",
   "displayName": "Git Stats Plus",
   "description": "Beautiful visualization of team code contributions with interactive charts and insights, base on project git-stats of @lixianmin.",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "publisher": "zhuchiheng",
   "author": {
     "name": "zhuchiheng"
