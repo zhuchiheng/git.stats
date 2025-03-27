@@ -2,14 +2,23 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { AuthorStats, GitContributionAnalyzer } from './gitAnalyzer';
 import moment from 'moment';
+import { SimpleGit } from 'simple-git';
 
 export class ContributionVisualization {
     private panel: vscode.WebviewPanel | undefined;
     private disposables: vscode.Disposable[] = [];
     private webview: vscode.Webview | undefined;
+    private gitRepos: {path: string, git: SimpleGit}[] = [];
+    private currentRepoIndex: number = 0;
+    private analyzer: GitContributionAnalyzer;
 
-    constructor(private context: vscode.ExtensionContext, private analyzer: GitContributionAnalyzer) {
-
+    constructor(
+        private context: vscode.ExtensionContext, 
+        private analyzers: GitContributionAnalyzer[],
+        gitRepos: {path: string, git: SimpleGit}[]
+    ) {
+        this.gitRepos = gitRepos;
+        this.analyzer = analyzers[0]; // 设置默认分析器
     }
 
     public dispose() {
@@ -96,6 +105,8 @@ export class ContributionVisualization {
 
     public async handleTimeRangeChange(days: number, startDate?: string, endDate?: string) {
         try {
+            this.analyzer = this.analyzers[this.currentRepoIndex];
+
             // 获取完整的时间范围数据并缓存
             this.globalCache = await this.analyzer.getContributionStats(days, startDate, endDate);
             
@@ -175,6 +186,10 @@ export class ContributionVisualization {
                             await this.handleDeveloperChange(
                                 message.developer
                             );
+                            break;
+                        case 'repoChanged':
+                            this.currentRepoIndex = message.repoIndex;
+                            await this.handleTimeRangeChange(7); // 默认加载最近一周数据
                             break;
                     }
                 },
@@ -364,6 +379,13 @@ export class ContributionVisualization {
                             <option value="365">Last Year</option>
                         </select>
                     </div>
+                    <div class="repo-selector">
+                        <select id="repoSelect">
+                            ${this.gitRepos.map((repo, index) => 
+                                `<option value="${index}">${path.basename(repo.path)}</option>`
+                            ).join('')}
+                        </select>
+                    </div>
                     <div class="developer-selector"> <!-- 新增开发者选择器 -->
                         <select id="developerSelect">
                             <option value="all">All developers</option>
@@ -475,6 +497,16 @@ export class ContributionVisualization {
                     isDragging = false;
                     activePieChart = null;
                 }
+
+
+                // 添加仓库选择变化处理
+                const repoSelect = document.getElementById('repoSelect');
+                repoSelect.addEventListener('change', function(e) {
+                    vscode.postMessage({
+                        command: 'repoChanged',
+                        repoIndex: parseInt(this.value)
+                    });
+                });
 
                 const vscode = acquireVsCodeApi();
                 let commitChart, changeChart, pieChart, linesChangedPieChart;

@@ -1,8 +1,35 @@
 import * as vscode from 'vscode';
 import { simpleGit, SimpleGit } from 'simple-git';
+import * as fs from 'fs';
+import * as path from 'path';
 import moment from 'moment';
 import { GitContributionAnalyzer } from './gitAnalyzer';
 import { ContributionVisualization } from './visualization';
+
+export async function findGitRepos(rootPath: string): Promise<{path: string, git: SimpleGit}[]> {
+    const gitRepos: {path: string, git: SimpleGit}[] = [];
+    
+    async function scanDirectory(dir: string) {
+        const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+        for (const entry of entries) {
+            const fullPath = path.join(dir, entry.name);
+            if (entry.isDirectory()) {
+                if (entry.name === '.git') {
+                    const repoPath = path.dirname(fullPath);
+                    gitRepos.push({
+                        path: repoPath,
+                        git: simpleGit(repoPath)
+                    });
+                } else {
+                    await scanDirectory(fullPath);
+                }
+            }
+        }
+    }
+    
+    await scanDirectory(rootPath);
+    return gitRepos;
+}
 
 export function activate(context: vscode.ExtensionContext) {
     // Create status bar button
@@ -42,27 +69,38 @@ export function activate(context: vscode.ExtensionContext) {
             return;
         }
 
-        const rootPath = workspaceFolders[0].uri.fsPath;
-        // console.log(`Analyzing repository at: ${rootPath}`);
-        const git: SimpleGit = simpleGit(rootPath);
-
         try {
-            // 检查是否是Git仓库
-            const isRepo = await git.checkIsRepo();
-            if (!isRepo) {
-                vscode.window.showErrorMessage('This workspace is not a Git repository');
+            // 查找所有Git仓库
+            const gitRepos: {path: string, git: SimpleGit}[] = [];
+            
+            for (const folder of workspaceFolders) {
+                const rootPath = folder.uri.fsPath;
+                const git = simpleGit(rootPath);
+                
+                try {
+                    const isRepo = await git.checkIsRepo();
+                    if (isRepo) {
+                        gitRepos.push({path: rootPath, git});
+                    } else {
+                        // 递归查找子目录中的Git仓库
+                        const subRepos = await findGitRepos(rootPath);
+                        gitRepos.push(...subRepos);
+                    }
+                } catch (error) {
+                    console.error(`Error checking repository at ${rootPath}:`, error);
+                }
+            }
+
+            if (gitRepos.length === 0) {
+                vscode.window.showErrorMessage('No Git repositories found in workspace');
                 return;
             }
-            // console.log('Valid Git repository confirmed');
 
-            // 创建分析器实例
-            const gitAnalyzer = new GitContributionAnalyzer(git);
-
-            // 获取默认时间范围（最近一周）的统计数据
-            // const stats = await gitAnalyzer.getContributionStats();
-
+            // 为每个仓库创建分析器实例
+            const analyzers = gitRepos.map(repo => new GitContributionAnalyzer(repo.git));
+            
             // 创建可视化实例
-            const visualization = new ContributionVisualization(context, gitAnalyzer);
+            const visualization = new ContributionVisualization(context, analyzers, gitRepos);
 
             // 显示加载消息
             vscode.window.withProgress({
@@ -70,12 +108,58 @@ export function activate(context: vscode.ExtensionContext) {
                 title: "Analyzing Git history...",
                 cancellable: false
             }, async (progress) => {
-                const stats = await gitAnalyzer.getContributionStats();
-                await visualization.show(stats);
+                // 分析所有仓库
+                const allStats = await Promise.all(
+                    analyzers.map((analyzer, index) => 
+                        analyzer.getContributionStats(7, undefined, undefined, undefined, gitRepos[index].path)
+                    )
+                );
+                
+                // 合并统计结果
+                const combinedStats = allStats.reduce((acc, stats) => {
+                    for (const author in stats) {
+                        if (!acc[author]) {
+                            acc[author] = stats[author];
+                        } else {
+                            // 合并统计
+                            acc[author].totalCommits += stats[author].totalCommits;
+                            acc[author].totalInsertions += stats[author].totalInsertions;
+                            acc[author].totalDeletions += stats[author].totalDeletions;
+                            acc[author].totalFiles += stats[author].totalFiles;
+                            
+                            // 合并每日统计
+                            for (const date in stats[author].dailyStats) {
+                                if (!acc[author].dailyStats[date]) {
+                                    acc[author].dailyStats[date] = stats[author].dailyStats[date];
+                                } else {
+                                    acc[author].dailyStats[date].commits += stats[author].dailyStats[date].commits;
+                                    acc[author].dailyStats[date].insertions += stats[author].dailyStats[date].insertions;
+                                    acc[author].dailyStats[date].deletions += stats[author].dailyStats[date].deletions;
+                                    acc[author].dailyStats[date].files += stats[author].dailyStats[date].files;
+                                }
+                            }
+                            
+                            // 合并小时统计
+                            for (const hour in stats[author].hourlyStats) {
+                                if (!acc[author].hourlyStats[hour]) {
+                                    acc[author].hourlyStats[hour] = stats[author].hourlyStats[hour];
+                                } else {
+                                    acc[author].hourlyStats[hour].commits += stats[author].hourlyStats[hour].commits;
+                                    acc[author].hourlyStats[hour].insertions += stats[author].hourlyStats[hour].insertions;
+                                    acc[author].hourlyStats[hour].deletions += stats[author].hourlyStats[hour].deletions;
+                                    acc[author].hourlyStats[hour].files += stats[author].hourlyStats[hour].files;
+                                }
+                            }
+                        }
+                    }
+                    return acc;
+                }, {} as Record<string, any>);
+
+                await visualization.show(combinedStats);
             });
         } catch (error) {
             vscode.window.showErrorMessage('Error analyzing Git history: ' + error);
-            // console.error('Error:', error);
+            console.error('Error:', error);
         }
     });
 

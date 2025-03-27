@@ -30,8 +30,6 @@ export interface GitAnalyzerConfig {
 export class GitContributionAnalyzer {
     private git: SimpleGit;
     private config: GitAnalyzerConfig;
-    private repoPath: string = '';
-
     constructor(git: SimpleGit, config: Partial<GitAnalyzerConfig> = {}) {
         this.git = git;
         this.config = {
@@ -128,14 +126,14 @@ export class GitContributionAnalyzer {
         return isExcluded;
     }
 
-    private shouldIncludeFile(file: string): boolean {
+    private shouldIncludeFile(file: string, repoPath: string): boolean {
         // 首先检查文件路径中是否包含Protos目录
         if (file.includes('Protos/') || file.includes('Protos\\')) {
             console.log(`Excluding file from Protos directory: ${file}`);
             return false;
         }
 
-        const fullPath = path.join(this.repoPath, file);
+        const fullPath = path.join(repoPath, file);
         const shouldExclude = this.isProtobufGeneratedFile(fullPath);
         if (shouldExclude) {
             console.log(`Excluding generated file: ${file}`);
@@ -182,9 +180,135 @@ export class GitContributionAnalyzer {
         return await this.getContributionStats(days, startDate, endDate, developer);
     }
 
-    async getContributionStats(days: number = 7, startDateStr?: string, endDateStr?: string, authorFilter?: string): Promise<{ [author: string]: AuthorStats }> {
+    async findGitRepos(rootPath: string): Promise<string[]> {
+        const gitRepos: string[] = [];
+        const dirsToCheck = [rootPath];
+        const visitedDirs = new Set<string>();
+        
+        while (dirsToCheck.length > 0) {
+            const currentDir = dirsToCheck.pop()!;
+            
+            // 跳过已访问目录
+            if (visitedDirs.has(currentDir)) {
+                continue;
+            }
+            visitedDirs.add(currentDir);
+            
+            try {
+                const files = fs.readdirSync(currentDir);
+                
+                // 检查当前目录是否是git仓库
+                if (files.includes('.git')) {
+                    gitRepos.push(currentDir);
+                    continue; // 不检查git仓库的子目录
+                }
+                
+                // 添加子目录到检查列表
+                for (const file of files) {
+                    const fullPath = path.join(currentDir, file);
+                    try {
+                        const stat = fs.statSync(fullPath);
+                        if (stat.isDirectory()) {
+                            dirsToCheck.push(fullPath);
+                        }
+                    } catch (error) {
+                        console.error(`Error accessing ${fullPath}:`, error);
+                    }
+                }
+            } catch (error) {
+                console.error(`Error scanning directory ${currentDir}:`, error);
+            }
+        }
+        
+        return gitRepos;
+    }
+
+    async analyzeMultipleRepositories(repoPaths: string[], days: number = 7, startDateStr?: string, endDateStr?: string): Promise<{ [author: string]: AuthorStats }> {
+        const combinedStats: { [author: string]: AuthorStats } = {};
+        
+        // 计算时间范围
+        let endDate: moment.Moment;
+        let startDate: moment.Moment;
+
+        if (startDateStr && endDateStr) {
+            startDate = moment(startDateStr).startOf('day');
+            endDate = moment(endDateStr).endOf('day');
+        } else {
+            endDate = moment().endOf('day');
+            startDate = endDate.clone().subtract(days - 1, 'days').startOf('day');
+        }
+
+        for (const repoPath of repoPaths) {
+            try {
+                const git = simpleGit(repoPath);
+                const analyzer = new GitContributionAnalyzer(git);
+                const repoStats = await analyzer.getContributionStats(days, startDateStr, endDateStr, undefined, repoPath);
+                
+                // 合并统计结果
+                for (const author in repoStats) {
+                    if (!combinedStats[author]) {
+                        combinedStats[author] = {
+                            author: repoStats[author].author,
+                            email: repoStats[author].email,
+                            startDate,
+                            endDate,
+                            totalCommits: 0,
+                            totalInsertions: 0,
+                            totalDeletions: 0,
+                            totalFiles: 0,
+                            dailyStats: {},
+                            hourlyStats: {}
+                        };
+                    }
+
+                    // 合并总数
+                    combinedStats[author].totalCommits += repoStats[author].totalCommits;
+                    combinedStats[author].totalInsertions += repoStats[author].totalInsertions;
+                    combinedStats[author].totalDeletions += repoStats[author].totalDeletions;
+                    combinedStats[author].totalFiles += repoStats[author].totalFiles;
+
+                    // 合并每日统计
+                    for (const date in repoStats[author].dailyStats) {
+                        if (!combinedStats[author].dailyStats[date]) {
+                            combinedStats[author].dailyStats[date] = {
+                                commits: 0,
+                                insertions: 0,
+                                deletions: 0,
+                                files: 0
+                            };
+                        }
+                        combinedStats[author].dailyStats[date].commits += repoStats[author].dailyStats[date].commits;
+                        combinedStats[author].dailyStats[date].insertions += repoStats[author].dailyStats[date].insertions;
+                        combinedStats[author].dailyStats[date].deletions += repoStats[author].dailyStats[date].deletions;
+                        combinedStats[author].dailyStats[date].files += repoStats[author].dailyStats[date].files;
+                    }
+
+                    // 合并每小时统计
+                    for (const hour in repoStats[author].hourlyStats) {
+                        if (!combinedStats[author].hourlyStats[hour]) {
+                            combinedStats[author].hourlyStats[hour] = {
+                                commits: 0,
+                                insertions: 0,
+                                deletions: 0,
+                                files: 0
+                            };
+                        }
+                        combinedStats[author].hourlyStats[hour].commits += repoStats[author].hourlyStats[hour].commits;
+                        combinedStats[author].hourlyStats[hour].insertions += repoStats[author].hourlyStats[hour].insertions;
+                        combinedStats[author].hourlyStats[hour].deletions += repoStats[author].hourlyStats[hour].deletions;
+                        combinedStats[author].hourlyStats[hour].files += repoStats[author].hourlyStats[hour].files;
+                    }
+                }
+            } catch (error) {
+                console.error(`Error analyzing repository ${repoPath}:`, error);
+            }
+        }
+
+        return combinedStats;
+    }
+
+    async getContributionStats(days: number = 7, startDateStr?: string, endDateStr?: string, authorFilter?: string, repoPath?: string): Promise<{ [author: string]: AuthorStats }> {
         console.log(`Starting contribution analysis for the last ${days} days`);
-        console.log(`Repository path: ${this.repoPath}`);
         console.log('Custom date range:', startDateStr, 'to', endDateStr);
 
         // 计算时间范围
@@ -332,8 +456,8 @@ export class GitContributionAnalyzer {
                     const [ins, del, file] = line.split('\t');
                     if (!file) continue;
 
-                    // 检查是否应该包含此文件
-                    if (!this.shouldIncludeFile(file)) {
+                // 检查是否应该包含此文件
+                if (!this.shouldIncludeFile(file, repoPath || '')) {
                         console.log(`Skipping generated file in commit ${hash}: ${file}`);
                         continue;
                     }
@@ -405,7 +529,7 @@ export class GitContributionAnalyzer {
     }
 
     async analyzeRepository(repoPath: string, startDate: moment.Moment, endDate: moment.Moment): Promise<{ [author: string]: AuthorStats }> {
-        this.repoPath = repoPath;
+        // 保持原有实现不变，但添加repoPath参数传递
         const git = simpleGit(repoPath);
         const stats: { [author: string]: AuthorStats } = {};
 
@@ -443,8 +567,8 @@ export class GitContributionAnalyzer {
                         const parts = line.split('\t');
                         if (parts.length === 3) {
                             const [ins, dels, file] = parts;
-                            // 检查是否应该包含此文件
-                            if (!this.shouldIncludeFile(file)) {
+                    // 检查是否应该包含此文件
+                    if (!this.shouldIncludeFile(file, repoPath)) {
                                 continue;
                             }
                             const insCount = ins === '-' ? 0 : parseInt(ins) || 0;
