@@ -993,6 +993,7 @@
                 const startDay = firstDay.getDay();
                 for (let i = 0; i < startDay; i++) {
                     const empty = document.createElement('div');
+                    empty.style.width = empty.style.height = 'clamp(20px, 3.5vw, 28px)';
                     gridContainer.appendChild(empty);
                 }
 
@@ -1001,14 +1002,12 @@
                     cell.style.backgroundColor = day.totalCommits > 0
                         ? `rgba(46, 204, 113, ${day.colorIntensity})`
                         : 'transparent';
-                    cell.style.aspectRatio = '1';
+                    cell.style.width = cell.style.height = 'clamp(20px, 3.5vw, 28px)';
                     cell.style.borderRadius = '4px';
                     cell.style.display = 'flex';
                     cell.style.alignItems = 'center';
                     cell.style.justifyContent = 'center';
-                    cell.style.fontSize = 'clamp(10px, 1.5vw, 14px)';
-                    cell.style.minWidth = '20px';
-                    cell.style.minHeight = '20px';
+                    cell.style.fontSize = 'clamp(10px, 1.2vw, 13px)';
                     cell.title = `Date: ${day.date}, Commits: ${day.totalCommits}`;
 
                     const dateNum = new Date(day.date).getDate();

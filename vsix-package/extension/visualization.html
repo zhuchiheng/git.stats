@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Git Stats</title>
+    <script src="{{CHART_JS_URI}}"></script>
+    <style>
+        :root {
+            --vscode-dropdown-background: var(--vscode-input-background);
+            --vscode-dropdown-foreground: var(--vscode-input-foreground);
+            --vscode-dropdown-border: var(--vscode-input-border);
+        }
+        .container {
+            padding: 20px;
+            max-width: 1600px;
+            margin: 0 auto;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .time-range-selector {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+        .date-picker {
+            background-color: var(--vscode-dropdown-background);
+            color: var(--vscode-dropdown-foreground);
+            border: 1px solid var(--vscode-dropdown-border);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+        .date-separator {
+            color: var(--vscode-foreground);
+            margin: 0 4px;
+        }
+        .chart-container {
+            position: relative;
+            height: 400px;
+            margin-bottom: 20px;
+            background-color: var(--vscode-editor-background);
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .calendar-container {
+            position: relative;
+            height: 900px;
+            margin-bottom: 20px;
+            background-color: var(--vscode-editor-background);
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .chart-title {
+            margin-bottom: 15px;
+            color: var(--vscode-foreground);
+            font-size: 18px;
+            font-weight: 500;
+        }
+        .summary-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            margin-bottom: 30px;
+            background-color: var(--vscode-editor-background);
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .summary-table th, .summary-table td {
+            padding: 12px;
+            text-align: left;
+            border: 1px solid var(--vscode-dropdown-border);
+        }
+        .summary-table th {
+            background-color: var(--vscode-dropdown-background);
+            font-weight: 500;
+        }
+        .summary-table tr:hover {
+            background-color: var(--vscode-list-hoverBackground);
+        }
+        .pie-chart-container {
+            position: absolute;
+            top: 100px;
+            left: 100px;
+            width: 150px;
+            height: 150px;
+            background-color: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            cursor: move;
+            z-index: 1000;
+            backdrop-filter: blur(3px);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.08);
+        }
+        .pie-chart-container:hover {
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+        }
+        select {
+            background-color: var(--vscode-dropdown-background);
+            color: var(--vscode-dropdown-foreground);
+            border: 1px solid var(--vscode-dropdown-border);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+        select:focus {
+            outline: none;
+            border-color: var(--vscode-focusBorder);
+        }
+        h1 {
+            margin: 0;
+            font-size: 24px;
+            color: var(--vscode-foreground);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Git Stats</h1>
+            <div class="time-range-selector">
+                <input type="date" id="startDate" class="date-picker" title="Start Date">
+                <span class="date-separator">to</span>
+                <input type="date" id="endDate" class="date-picker" title="End Date">
+                <select id="timeRange">
+                    <option value="custom" selected>Custom Range</option>
+                    <option value="7">Last Week</option>
+                    <option value="30">Last Month</option>
+                    <option value="90">Last 3 Months</option>
+                    <option value="180">Last 6 Months</option>
+                    <option value="365">Last Year</option>
+                    <option value="1095">Last 3 Years</option>
+                </select>
+            </div>
+            <div class="repo-selector">
+                <select id="repoSelect">
+                    {{REPO_OPTIONS}}
+                </select>
+            </div>
+            <div class="developer-selector">
+                <select id="developerSelect">
+                    <option value="all">All developers</option>
+                    {{AUTHOR_OPTIONS}}
+                </select>
+            </div>
+        </div>
+        <div class="chart-container">
+            <div class="pie-chart-container">
+                <canvas id="pieChart"></canvas>
+            </div>
+            <h2 class="chart-title">Daily Commits</h2>
+            <canvas id="commitChart"></canvas>
+        </div>
+        <div class="chart-container">
+            <div class="pie-chart-container">
+                <canvas id="linesChangedPieChart"></canvas>
+            </div>
+            <h2 class="chart-title">Daily Lines Changed</h2>
+            <canvas id="changeChart"></canvas>
+        </div>
+        <div class="chart-container">
+            <h2 class="chart-title">Hourly Commits</h2>
+            <canvas id="hourlyCommitChart"></canvas>
+        </div>
+        <div class="chart-container">
+            <h2 class="chart-title">Hourly Lines Changes</h2>
+            <canvas id="hourlyChangeChart"></canvas>
+        </div>
+        <div class="calendar-container">
+            <h2 class="chart-title">Contribution Calendar</h2>
+            <div id="calendar" style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; max-height: 800px; overflow-y: auto; padding: 4px;"></div>
+        </div>
+        <h2>Summary</h2>
+        <table class="summary-table">
+            <tr>
+                <th>Author</th>
+                <th>Total Commits</th>
+                <th>Lines Added</th>
+                <th>Lines Deleted</th>
+                <th>Files Changed</th>
+            </tr>
+            {{AUTHOR_ROWS}}
+        </table>
+    </div>
+    <script>
+        const pieChartContainers = document.querySelectorAll('.pie-chart-container');
+        let isDragging = false;
+        let currentX;
+        let currentY;
+        let initialX;
+        let initialY;
+        let activePieChart = null;
+
+        pieChartContainers.forEach(container => {
+            container.addEventListener('mousedown', (e) => {
+                activePieChart = container;
+                dragStart(e);
+            });
+        });
+
+        document.addEventListener('mousemove', drag);
+        document.addEventListener('mouseup', dragEnd);
+
+        function dragStart(e) {
+            if (!activePieChart) return;
+            initialX = e.clientX - activePieChart.offsetLeft;
+            initialY = e.clientY - activePieChart.offsetTop;
+            isDragging = true;
+        }
+
+        function drag(e) {
+            if (isDragging && activePieChart) {
+                e.preventDefault();
+                currentX = e.clientX - initialX;
+                currentY = e.clientY - initialY;
+
+                const container = activePieChart.closest('.chart-container');
+                const maxX = container.offsetWidth - activePieChart.offsetWidth;
+                const maxY = container.offsetHeight - activePieChart.offsetHeight;
+
+                currentX = Math.max(0, Math.min(currentX, maxX));
+                currentY = Math.max(0, Math.min(currentY, maxY));
+
+                activePieChart.style.left = currentX + 'px';
+                activePieChart.style.top = currentY + 'px';
+            }
+        }
+
+        function dragEnd() {
+            isDragging = false;
+            activePieChart = null;
+        }
+
+        const repoSelect = document.getElementById('repoSelect');
+        repoSelect.addEventListener('change', function(e) {
+            vscode.postMessage({
+                command: 'repoChanged',
+                repoIndex: parseInt(this.value)
+            });
+        });
+
+        const vscode = acquireVsCodeApi();
+        let commitChart, changeChart, pieChart, linesChangedPieChart;
+
+        const commitData = {{COMMIT_DATA}};
+        const changeData = {{CHANGE_DATA}};
+        const hourlyCommitData = {{HOURLY_COMMIT_DATA}};
+        const hourlyChangeData = {{HOURLY_CHANGE_DATA}};
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const lastCommitDate = new Date(endDate);
+        lastCommitDate.setHours(0, 0, 0, 0);
+
+        document.getElementById('startDate').value = '{{START_DATE}}';
+        document.getElementById('endDate').value = '{{END_DATE}}';
+
+        const start = new Date('{{START_DATE}}');
+        const end = new Date('{{END_DATE}}');
+        const diffDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
+
+        if (diffDays === 7) {
+            document.getElementById('timeRange').value = '7';
+        } else if (diffDays === 30) {
+            document.getElementById('timeRange').value = '30';
+        } else {
+            document.getElementById('timeRange').value = 'custom';
+        }
+
+        function createCommitChart(data) {
+            const ctx = document.getElementById('commitChart');
+            if (commitChart) {
+                commitChart.destroy();
+            }
+            commitChart = new Chart(ctx, {
+                type: 'line',
+                data: data,
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return context.dataset.label + ': ' + context.raw + ' commits';
+                                }
+                            }
+                        }
+                    },
+                    elements: {
+                        line: {
+                            tension: 0.4,
+                            cubicInterpolationMode: 'monotone'
+                        }
+                    },
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Date'
+                            },
+                            ticks: {
+                                maxRotation: 45,
+                                minRotation: 45
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Number of Commits'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function createChangeChart(data) {
+            const ctx = document.getElementById('changeChart');
+            if (changeChart) {
+                changeChart.destroy();
+            }
+            changeChart = new Chart(ctx, {
+                type: 'bar',
+                data: data,
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return context.dataset.label + ': ' + context.raw + ' lines changed';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Date'
+                            },
+                            ticks: {
+                                maxRotation: 45,
+                                minRotation: 45
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Lines Changed'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function createPieChart(data) {
+            const ctx = document.getElementById('pieChart');
+            const totalCommits = data.datasets.reduce((acc, dataset) => {
+                return acc + dataset.data.reduce((sum, val) => sum + val, 0);
+            }, 0);
+
+            const pieData = {
+                labels: data.datasets.map(d => d.label),
+                datasets: [{
+                    data: data.datasets.map(d =>
+                        d.data.reduce((sum, val) => sum + val, 0)
+                    ),
+                    backgroundColor: data.datasets.map(d => d.backgroundColor),
+                    borderColor: 'rgba(0, 0, 0, 0.1)',
+                    borderWidth: 1
+                }]
+            };
+
+            if (pieChart) {
+                pieChart.destroy();
+            }
+
+            pieChart = new Chart(ctx, {
+                type: 'pie',
+                data: pieData,
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const value = context.raw;
+                                    const percentage = ((value / totalCommits) * 100).toFixed(1);
+                                    return [
+                                        context.label,
+                                        'Commits: ' + value,
+                                        'Percentage: ' + percentage + '%'
+                                    ];
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function createLinesChangedPieChart(data) {
+            const ctx = document.getElementById('linesChangedPieChart');
+            const totalLines = data.datasets.reduce((acc, dataset) => {
+                return acc + dataset.data.reduce((sum, val) => sum + val, 0);
+            }, 0);
+
+            const pieData = {
+                labels: data.datasets.map(d => d.label),
+                datasets: [{
+                    data: data.datasets.map(d =>
+                        d.data.reduce((sum, val) => sum + val, 0)
+                    ),
+                    backgroundColor: data.datasets.map(d => d.backgroundColor),
+                    borderColor: 'rgba(0, 0, 0, 0.1)',
+                    borderWidth: 1
+                }]
+            };
+
+            if (linesChangedPieChart) {
+                linesChangedPieChart.destroy();
+            }
+
+            linesChangedPieChart = new Chart(ctx, {
+                type: 'pie',
+                data: pieData,
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const value = context.raw;
+                                    const percentage = ((value / totalLines) * 100).toFixed(1);
+                                    return [
+                                        context.label,
+                                        'Lines Changed: ' + value,
+                                        'Percentage: ' + percentage + '%'
+                                    ];
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function createHourlyCommitChart(data) {
+            const ctx = document.getElementById('hourlyCommitChart');
+            const existingChart = Chart.getChart(ctx);
+            if (existingChart) {
+                existingChart.destroy();
+            }
+
+            new Chart(ctx, {
+                type: 'line',
+                data: data,
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return context.dataset.label + ': ' + context.raw + ' commits';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Hour'
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Number of Commits'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function createHourlyChangeChart(data) {
+            const ctx = document.getElementById('hourlyChangeChart');
+            const existingChart = Chart.getChart(ctx);
+            if (existingChart) {
+                existingChart.destroy();
+            }
+
+            new Chart(ctx, {
+                type: 'bar',
+                data: data,
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return context.dataset.label + ': ' + context.raw + ' lines changed';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Hour'
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Lines Changed'
+                            },
+                            stacked: true
+                        }
+                    }
+                }
+            });
+        }
+
+        createCommitChart(commitData);
+        createChangeChart(changeData);
+        createPieChart(commitData);
+        createLinesChangedPieChart(changeData);
+        createHourlyCommitChart(hourlyCommitData);
+        createHourlyChangeChart(hourlyChangeData);
+
+        window.addEventListener('message', event => {
+            const message = event.data;
+            switch (message.command) {
+                case 'updateDevelopers':
+                    const developerSelect = document.getElementById('developerSelect');
+                    if (developerSelect && message.developers) {
+                        const currentValue = developerSelect.value;
+                        developerSelect.innerHTML =
+                            '<option value="all">All developers</option>' +
+                            message.developers.map(author =>
+                                '<option value="' + author + '">' + author + '</option>'
+                            ).join('');
+                        if (currentValue && message.developers.includes(currentValue)) {
+                            developerSelect.value = currentValue;
+                        } else {
+                            developerSelect.value = 'all';
+                        }
+                    }
+                    break;
+                case 'updateData':
+                    if (commitChart) {
+                        commitChart.data = message.commitData;
+                        commitChart.update();
+                        createPieChart(message.commitData);
+                    }
+                    if (changeChart) {
+                        changeChart.data = message.changeData;
+                        changeChart.update();
+                        createLinesChangedPieChart(message.changeData);
+                    }
+
+                    if (message.hourlyCommitData) {
+                        createHourlyCommitChart(message.hourlyCommitData);
+                    }
+                    if (message.hourlyChangeData) {
+                        createHourlyChangeChart(message.hourlyChangeData);
+                    }
+
+                    if (message.calendarData) {
+                        renderCalendar(message.calendarData);
+                    }
+
+                    const summaryTable = document.querySelector('.summary-table');
+                    if (summaryTable && message.authorStats) {
+                        const tableHeader = summaryTable.querySelector('tr');
+                        if (tableHeader) {
+                            summaryTable.innerHTML = '';
+                            summaryTable.appendChild(tableHeader);
+
+                            message.authorStats.forEach(authorStat => {
+                                const row = document.createElement('tr');
+                                const cells = [
+                                    authorStat.author,
+                                    authorStat.totalCommits || 0,
+                                    authorStat.totalInsertions || 0,
+                                    authorStat.totalDeletions || 0,
+                                    authorStat.totalFiles || 0
+                                ];
+                                cells.forEach(value => {
+                                    const cell = document.createElement('td');
+                                    cell.textContent = value.toString();
+                                    row.appendChild(cell);
+                                });
+                                summaryTable.appendChild(row);
+                            });
+                        }
+                    }
+                    break;
+            }
+        });
+
+        const timeRangeSelect = document.getElementById('timeRange');
+        const startDateInput = document.getElementById('startDate');
+        const endDateInput = document.getElementById('endDate');
+
+        timeRangeSelect.addEventListener('change', function(e) {
+            const value = this.value;
+            if (value === 'custom') {
+                return;
+            }
+
+            const days = parseInt(value);
+            const end = new Date();
+            const start = new Date();
+            start.setDate(end.getDate() - (days - 1));
+
+            startDateInput.value = start.toISOString().split('T')[0];
+            endDateInput.value = end.toISOString().split('T')[0];
+
+            vscode.postMessage({
+                command: 'timeRangeChanged',
+                days: days,
+                startDate: startDateInput.value,
+                endDate: endDateInput.value
+            });
+        });
+
+        function handleDateChange() {
+            const start = new Date(startDateInput.value);
+            const end = new Date(endDateInput.value);
+
+            if (start && end && start <= end) {
+                const diffTime = Math.abs(end - start);
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+
+                timeRangeSelect.value = 'custom';
+
+                vscode.postMessage({
+                    command: 'timeRangeChanged',
+                    days: diffDays,
+                    startDate: startDateInput.value,
+                    endDate: endDateInput.value
+                });
+            }
+        }
+
+        startDateInput.addEventListener('change', handleDateChange);
+        endDateInput.addEventListener('change', handleDateChange);
+
+        const WEEKDAYS_HEADER_HTML = '<div style="display: grid; grid-template-columns: repeat(7, 1fr); margin-bottom: 8px; font-weight: 500;">' +
+            ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
+                .map(day => '<div style="text-align: center">' + day + '</div>')
+                .join('') +
+            '</div>';
+
+        function renderCalendar(calendarData) {
+            const container = document.getElementById('calendar');
+            if (!container) return;
+
+            container.innerHTML = "";
+
+            const calendarWrapper = document.createElement('div');
+            calendarWrapper.style.display = 'grid';
+            calendarWrapper.style.gridTemplateColumns = 'repeat(8, 1fr)';
+            calendarWrapper.style.gap = '8px';
+            calendarWrapper.style.padding = '8px';
+
+            const months = {};
+            calendarData.forEach(day => {
+                const date = new Date(day.date);
+                const month = date.toLocaleString('default', { month: 'long', year: 'numeric' });
+                if (!months[month]) {
+                    months[month] = [];
+                }
+                months[month].push(day);
+            });
+
+            Object.entries(months).forEach(([month, days]) => {
+                const monthContainer = document.createElement('div');
+                monthContainer.style.display = 'flex';
+                monthContainer.style.flexDirection = 'column';
+                monthContainer.style.gap = '4px';
+
+                const monthHeader = document.createElement('div');
+                monthHeader.textContent = month;
+                monthHeader.style.fontWeight = '500';
+                monthHeader.style.marginBottom = '8px';
+                monthContainer.appendChild(monthHeader);
+
+                const weekRow = document.createElement('div');
+                weekRow.innerHTML = WEEKDAYS_HEADER_HTML;
+                monthContainer.appendChild(weekRow);
+
+                const gridContainer = document.createElement('div');
+                gridContainer.style.display = 'grid';
+                gridContainer.style.gridTemplateColumns = 'repeat(7, 1fr)';
+                gridContainer.style.gap = '2px';
+
+                const firstDay = new Date(days[0].date);
+                const startDay = firstDay.getDay();
+                for (let i = 0; i < startDay; i++) {
+                    const empty = document.createElement('div');
+                    gridContainer.appendChild(empty);
+                }
+
+                days.forEach(day => {
+                    const cell = document.createElement('div');
+                    cell.style.backgroundColor = day.totalCommits > 0
+                        ? `rgba(46, 204, 113, ${day.colorIntensity})`
+                        : 'transparent';
+                    cell.style.width = '24px';
+                    cell.style.height = '24px';
+                    cell.style.borderRadius = '4px';
+                    cell.style.display = 'flex';
+                    cell.style.alignItems = 'center';
+                    cell.style.justifyContent = 'center';
+                    cell.style.fontSize = '12px';
+                    cell.title = `Date: ${day.date}, Commits: ${day.totalCommits}`;
+
+                    const dateNum = new Date(day.date).getDate();
+                    cell.textContent = dateNum;
+
+                    gridContainer.appendChild(cell);
+                });
+
+                monthContainer.appendChild(gridContainer);
+                calendarWrapper.appendChild(monthContainer);
+            });
+
+            container.appendChild(calendarWrapper);
+        }
+
+        const calendarData = {{CALENDAR_DATA}};
+        renderCalendar(calendarData);
+
+        const developerSelect = document.getElementById('developerSelect');
+        developerSelect.addEventListener('change', function(e) {
+            const developer = this.value;
+            vscode.postMessage({
+                command: 'developerChanged',
+                developer: developer
+            });
+        });
+    </script>
+</body>
+</html>

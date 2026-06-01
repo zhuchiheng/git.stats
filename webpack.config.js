@@ -2,7 +2,6 @@
 'use strict';
 
 const path = require('path');
-const TerserPlugin = require('terser-webpack-plugin');
 
 /** @type {import('webpack').Configuration} */
 const config = {
@@ -42,24 +41,6 @@ const config = {
           }
         ]
       }
-    ]
-  },
-  optimization: {
-    minimize: true,
-    minimizer: [
-      new TerserPlugin({
-        terserOptions: {
-          format: {
-            comments: false,
-          },
-          compress: {
-            drop_console: true,
-            dead_code: true,
-            unused: true
-          }
-        },
-        extractComments: false
-      })
     ]
   },
   performance: {
