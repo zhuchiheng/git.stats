@@ -221,6 +221,16 @@ export class GitContributionAnalyzer {
                 'change','refactor','fixed','updated','added','removed',
                 'changed','refactored','wip','stash'
             ]);
+            const CN_STOP = new Set([
+                '的','了','是','在','我','不','人','这','那','他',
+                '她','它','们','为','就','都','也','要','会','可',
+                '没','有','上','中','下','前','后','大','小','多',
+                '少','能','把','被','让','给','到','和','与','及',
+                '或','而','则','但','然','因','所','以','对','从',
+                '向','自','于','由','某','各','此','其','该','哪',
+                '每','第','次','等','之','已','将','只','个','一',
+                '么','还','又','再','却','只','并','去','着','过'
+            ]);
             const commitBlocks = rawOutput.split('\ncommit ');
 
             for (const block of commitBlocks) {
@@ -268,7 +278,26 @@ export class GitContributionAnalyzer {
                     };
                 }
 
-                const words = subject.toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 2 && !STOP_WORDS.has(w));
+                const rawTokens = subject.toLowerCase().split(/[^a-z0-9\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff]+/);
+                const words: string[] = [];
+                const CJK_RE = /^[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff]{2}$/;
+                for (const token of rawTokens) {
+                    if (token.length < 2) continue;
+                    const hasCJK = /[\u4e00-\u9fff]/.test(token);
+                    if (hasCJK) {
+                        const chars = Array.from(token);
+                        for (let i = 0; i < chars.length - 1; i++) {
+                            const bigram = chars[i] + chars[i + 1];
+                            if (CJK_RE.test(bigram) && !(CN_STOP.has(chars[i]) && CN_STOP.has(chars[i + 1])) && !STOP_WORDS.has(bigram)) {
+                                words.push(bigram);
+                            }
+                        }
+                    } else {
+                        if (token.length > 2 && !STOP_WORDS.has(token)) {
+                            words.push(token);
+                        }
+                    }
+                }
                 for (const word of words) {
                     allWordFreq.set(word, (allWordFreq.get(word) || 0) + 1);
                 }
