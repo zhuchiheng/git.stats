@@ -3,12 +3,12 @@ import { simpleGit, SimpleGit } from 'simple-git';
 import * as fs from 'fs';
 import * as path from 'path';
 import moment from 'moment';
-import { GitContributionAnalyzer } from './gitAnalyzer';
+import { AuthorStats, DailyStats, ContributionResult, FileChangeStats, OwnershipEntry, GitContributionAnalyzer } from './gitAnalyzer';
 import { ContributionVisualization } from './visualization';
 
 export async function findGitRepos(rootPath: string): Promise<{path: string, git: SimpleGit}[]> {
     const gitRepos: {path: string, git: SimpleGit}[] = [];
-    
+
     async function scanDirectory(dir: string) {
         const entries = await fs.promises.readdir(dir, { withFileTypes: true });
         for (const entry of entries) {
@@ -26,24 +26,21 @@ export async function findGitRepos(rootPath: string): Promise<{path: string, git
             }
         }
     }
-    
+
     await scanDirectory(rootPath);
     return gitRepos;
 }
 
 export function activate(context: vscode.ExtensionContext) {
-    // Create status bar button
     const statusBarItem = vscode.window.createStatusBarItem(
         vscode.StatusBarAlignment.Right,
-        1000  // Higher priority to ensure better visibility
+        1000
     );
 
-    // Configure status bar item
-    statusBarItem.text = "$(graph-line) Git Stats";  // Using git-commit icon
+    statusBarItem.text = "$(graph-line) Git Stats";
     statusBarItem.tooltip = "Click to view your Git contribution statistics";
     statusBarItem.command = 'git-stats.showStats';
 
-    // Only show the button when in a workspace with a Git repository
     const updateStatusBarVisibility = () => {
         if (vscode.workspace.workspaceFolders) {
             statusBarItem.show();
@@ -52,13 +49,11 @@ export function activate(context: vscode.ExtensionContext) {
         }
     };
 
-    // Update visibility initially and when workspace folders change
     updateStatusBarVisibility();
     context.subscriptions.push(
         vscode.workspace.onDidChangeWorkspaceFolders(() => updateStatusBarVisibility())
     );
 
-    // Add status bar item to subscriptions for cleanup
     context.subscriptions.push(statusBarItem);
 
     let disposable = vscode.commands.registerCommand('git-stats.showStats', async () => {
@@ -70,19 +65,17 @@ export function activate(context: vscode.ExtensionContext) {
         }
 
         try {
-            // 查找所有Git仓库
             const gitRepos: {path: string, git: SimpleGit}[] = [];
-            
+
             for (const folder of workspaceFolders) {
                 const rootPath = folder.uri.fsPath;
                 const git = simpleGit(rootPath);
-                
+
                 try {
                     const isRepo = await git.checkIsRepo();
                     if (isRepo) {
                         gitRepos.push({path: rootPath, git});
                     } else {
-                        // 递归查找子目录中的Git仓库
                         const subRepos = await findGitRepos(rootPath);
                         gitRepos.push(...subRepos);
                     }
@@ -92,70 +85,116 @@ export function activate(context: vscode.ExtensionContext) {
             }
 
             if (gitRepos.length === 0) {
-                vscode.window.showErrorMessage('No Git repositories found in workspace');
+                vscode.window.showErrorMessage('No Git repositories found in workspace. Please ensure:\n1. The workspace contains at least one Git repository\n2. You have read permissions for the .git directory');
                 return;
             }
 
-            // 为每个仓库创建分析器实例
             const analyzers = gitRepos.map(repo => new GitContributionAnalyzer(repo.git));
-            
-            // 创建可视化实例
+
             const visualization = new ContributionVisualization(context, analyzers, gitRepos);
 
-            // 显示加载消息
             vscode.window.withProgress({
                 location: vscode.ProgressLocation.Notification,
                 title: "Analyzing Git history...",
                 cancellable: false
             }, async (progress) => {
-                // 分析所有仓库
-                const allStats = await Promise.all(
-                    analyzers.map((analyzer, index) => 
-                        analyzer.getContributionStats(7, undefined, undefined, undefined, gitRepos[index].path)
+                const allResults = await Promise.all(
+                    analyzers.map((analyzer, index) =>
+                        analyzer.getContributionStats(0, undefined, undefined, undefined, gitRepos[index].path)
                     )
                 );
-                
-                // 合并统计结果
-                const combinedStats = allStats.reduce((acc, stats) => {
-                    for (const author in stats) {
-                        if (!acc[author]) {
-                            acc[author] = stats[author];
+
+                const combinedResult: ContributionResult = allResults.reduce((acc, result) => {
+                    for (const author in result.authorStats) {
+                        if (!acc.authorStats[author]) {
+                            acc.authorStats[author] = result.authorStats[author];
                         } else {
-                            // 合并统计
-                            acc[author].totalCommits += stats[author].totalCommits;
-                            acc[author].totalInsertions += stats[author].totalInsertions;
-                            acc[author].totalDeletions += stats[author].totalDeletions;
-                            acc[author].totalFiles += stats[author].totalFiles;
-                            
-                            // 合并每日统计
-                            for (const date in stats[author].dailyStats) {
-                                if (!acc[author].dailyStats[date]) {
-                                    acc[author].dailyStats[date] = stats[author].dailyStats[date];
+                            const s = result.authorStats[author];
+                            const t = acc.authorStats[author];
+                            t.totalCommits += s.totalCommits;
+                            t.totalInsertions += s.totalInsertions;
+                            t.totalDeletions += s.totalDeletions;
+                            t.totalFiles += s.totalFiles;
+
+                            for (const date in s.dailyStats) {
+                                if (!t.dailyStats[date]) {
+                                    t.dailyStats[date] = s.dailyStats[date];
                                 } else {
-                                    acc[author].dailyStats[date].commits += stats[author].dailyStats[date].commits;
-                                    acc[author].dailyStats[date].insertions += stats[author].dailyStats[date].insertions;
-                                    acc[author].dailyStats[date].deletions += stats[author].dailyStats[date].deletions;
-                                    acc[author].dailyStats[date].files += stats[author].dailyStats[date].files;
+                                    t.dailyStats[date].commits += s.dailyStats[date].commits;
+                                    t.dailyStats[date].insertions += s.dailyStats[date].insertions;
+                                    t.dailyStats[date].deletions += s.dailyStats[date].deletions;
+                                    t.dailyStats[date].files += s.dailyStats[date].files;
                                 }
                             }
-                            
-                            // 合并小时统计
-                            for (const hour in stats[author].hourlyStats) {
-                                if (!acc[author].hourlyStats[hour]) {
-                                    acc[author].hourlyStats[hour] = stats[author].hourlyStats[hour];
+
+                            for (const hour in s.hourlyStats) {
+                                if (!t.hourlyStats[hour]) {
+                                    t.hourlyStats[hour] = s.hourlyStats[hour];
                                 } else {
-                                    acc[author].hourlyStats[hour].commits += stats[author].hourlyStats[hour].commits;
-                                    acc[author].hourlyStats[hour].insertions += stats[author].hourlyStats[hour].insertions;
-                                    acc[author].hourlyStats[hour].deletions += stats[author].hourlyStats[hour].deletions;
-                                    acc[author].hourlyStats[hour].files += stats[author].hourlyStats[hour].files;
+                                    t.hourlyStats[hour].commits += s.hourlyStats[hour].commits;
+                                    t.hourlyStats[hour].insertions += s.hourlyStats[hour].insertions;
+                                    t.hourlyStats[hour].deletions += s.hourlyStats[hour].deletions;
+                                    t.hourlyStats[hour].files += s.hourlyStats[hour].files;
+                                }
+                            }
+
+                            if (s.weeklyHourly) {
+                                if (!t.weeklyHourly) {
+                                    t.weeklyHourly = Array.from({ length: 7 }, () => new Array(24).fill(0));
+                                }
+                                for (let d = 0; d < 7; d++) {
+                                    for (let h = 0; h < 24; h++) {
+                                        t.weeklyHourly[d][h] += (s.weeklyHourly[d]?.[h] || 0);
+                                    }
                                 }
                             }
                         }
                     }
-                    return acc;
-                }, {} as Record<string, any>);
 
-                await visualization.show(combinedStats);
+                    for (const fs of result.fileStats) {
+                        const existing = acc.fileStats.find(f => f.file === fs.file);
+                        if (existing) {
+                            existing.totalCommits += fs.totalCommits;
+                            existing.totalInsertions += fs.totalInsertions;
+                            existing.totalDeletions += fs.totalDeletions;
+                        } else {
+                            acc.fileStats.push({ ...fs });
+                        }
+                    }
+
+                    for (const ow of result.ownership) {
+                        const existing = acc.ownership.find(o => o.path === ow.path);
+                        if (existing) {
+                            existing.totalLines += ow.totalLines;
+                            for (const [author, lines] of Object.entries(ow.linesByAuthor)) {
+                                existing.linesByAuthor[author] = (existing.linesByAuthor[author] || 0) + lines;
+                            }
+                            let maxLines = 0;
+                            let primaryAuthor = '';
+                            for (const [author, lines] of Object.entries(existing.linesByAuthor)) {
+                                if (lines > maxLines) {
+                                    maxLines = lines;
+                                    primaryAuthor = author;
+                                }
+                            }
+                            existing.primaryAuthor = primaryAuthor;
+                            existing.primaryAuthorPercentage = existing.totalLines > 0 ? Math.round((maxLines / existing.totalLines) * 100) : 0;
+                        } else {
+                            acc.ownership.push({ ...ow, linesByAuthor: { ...ow.linesByAuthor } });
+                        }
+                    }
+
+                    for (const [word, count] of Object.entries(result.wordFreq || {})) {
+                        acc.wordFreq[word] = (acc.wordFreq[word] || 0) + count;
+                    }
+
+                    return acc;
+                }, { authorStats: {}, fileStats: [], ownership: [], wordFreq: {} });
+
+                combinedResult.fileStats.sort((a, b) => b.totalCommits - a.totalCommits);
+                combinedResult.ownership.sort((a, b) => b.totalLines - a.totalLines);
+
+                await visualization.show(combinedResult);
             });
         } catch (error) {
             vscode.window.showErrorMessage('Error analyzing Git history: ' + error);
