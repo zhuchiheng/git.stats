@@ -47,6 +47,8 @@ export class ContributionVisualization {
     private fileStatsCache: FileChangeStats[] = [];
     private ownershipCache: OwnershipEntry[] = [];
     private wordFreqCache: { [word: string]: number } = {};
+    private commitDetailsCache: { [date: string]: { t: string; a: string; m: string }[] } = {};
+    private heatmapDetailsCache: { [dayHour: string]: { d: string; t: string; a: string; m: string }[] } = {};
     private autoRangeActive: boolean = true;
 
     constructor(
@@ -102,6 +104,8 @@ export class ContributionVisualization {
                 weeklyHourlyGrid,
                 weeklyHourlyMax,
                 wordFreq: this.wordFreqCache,
+                commitDetails: this.commitDetailsCache,
+                heatmapDetails: this.heatmapDetailsCache,
                 isAuto: this.autoRangeActive,
                 startDateVal: authors.length > 0 ? authors[0].startDate.format('YYYY-MM-DD') : '',
                 endDateVal: authors.length > 0 ? authors[0].endDate.format('YYYY-MM-DD') : ''
@@ -155,6 +159,8 @@ export class ContributionVisualization {
                 weeklyHourlyGrid,
                 weeklyHourlyMax,
                 wordFreq: this.wordFreqCache,
+                commitDetails: this.commitDetailsCache,
+                heatmapDetails: this.heatmapDetailsCache,
                 isAuto: this.autoRangeActive,
                 startDateVal: authors.length > 0 ? authors[0].startDate.format('YYYY-MM-DD') : '',
                 endDateVal: authors.length > 0 ? authors[0].endDate.format('YYYY-MM-DD') : ''
@@ -172,6 +178,8 @@ export class ContributionVisualization {
             this.fileStatsCache = result.fileStats;
             this.ownershipCache = result.ownership;
             this.wordFreqCache = result.wordFreq || {};
+            this.commitDetailsCache = result.commitDetails || {};
+            this.heatmapDetailsCache = result.heatmapDetails || {};
 
             if (this.panel?.webview) {
                 const authors = Object.keys(this.globalCache).filter(a => !a.toLowerCase().includes('stash'));
@@ -203,9 +211,11 @@ export class ContributionVisualization {
         this.globalCache = result.authorStats;
         this.fileStatsCache = result.fileStats;
         this.ownershipCache = result.ownership;
-        this.wordFreqCache = result.wordFreq || {};
+            this.wordFreqCache = result.wordFreq || {};
+            this.commitDetailsCache = result.commitDetails || {};
+            this.heatmapDetailsCache = result.heatmapDetails || {};
 
-        if (this.panel) {
+            if (this.panel) {
             this.webview = this.panel.webview;
             this.panel.reveal();
 
@@ -356,7 +366,9 @@ export class ContributionVisualization {
                 .replace('{{WEEKLY_HOURLY_GRID}}', JSON.stringify(weeklyHourlyGrid))
                 .replace('{{WEEKLY_HOURLY_MAX}}', String(weeklyHourlyMax))
                 .replace('{{WORD_FREQ}}', JSON.stringify(result.wordFreq || {}))
-                .replace('{{IS_AUTO}}', this.autoRangeActive ? 'true' : 'false');
+                .replace('{{IS_AUTO}}', this.autoRangeActive ? 'true' : 'false')
+                .replace('{{COMMIT_DETAILS}}', JSON.stringify(result.commitDetails || {}))
+                .replace('{{HEATMAP_DETAILS}}', JSON.stringify(result.heatmapDetails || {}));
 
             return htmlContent;
         } catch (error) {

@@ -230,6 +230,57 @@
             background-color: rgba(33, 150, 243, 0.12);
             color: #2196F3;
         }
+        .commit-tooltip {
+            display: none;
+            position: fixed;
+            z-index: 9999;
+            background: var(--vscode-editor-background, #1e1e1e);
+            border: 1px solid var(--vscode-widget-border, #454545);
+            border-radius: 8px;
+            padding: 10px 14px;
+            font-size: 12px;
+            line-height: 1.6;
+            max-width: 420px;
+            max-height: 320px;
+            overflow-y: auto;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+            color: var(--vscode-editor-foreground, #ccc);
+        }
+        .commit-tooltip .tt-header {
+            font-weight: 600;
+            margin-bottom: 6px;
+            padding-bottom: 4px;
+            border-bottom: 1px solid var(--vscode-widget-border, #454545);
+        }
+        .commit-tooltip .tt-row {
+            display: flex;
+            gap: 8px;
+            padding: 2px 0;
+        }
+        .commit-tooltip .tt-time {
+            white-space: nowrap;
+            color: var(--vscode-textLink-foreground, #4daafc);
+            width: 130px;
+            flex-shrink: 0;
+        }
+        .commit-tooltip .tt-author {
+            font-weight: 500;
+            width: 72px;
+            flex-shrink: 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .commit-tooltip .tt-msg {
+            word-break: break-all;
+            overflow: hidden;
+        }
+        .commit-tooltip .tt-more {
+            text-align: center;
+            opacity: 0.6;
+            padding-top: 4px;
+            font-style: italic;
+        }
     </style>
 </head>
 <body>
@@ -838,6 +889,14 @@
                         renderWordFreq(message.wordFreq);
                     }
 
+                    if (message.commitDetails) {
+                        commitDetails = message.commitDetails;
+                        addChartClick(commitChart, commitDetails);
+                    }
+                    if (message.heatmapDetails) {
+                        heatmapDetails = message.heatmapDetails;
+                    }
+
                     if (message.isAuto) {
                         document.getElementById('timeRange').value = 'auto';
                     }
@@ -1009,6 +1068,11 @@
                     cell.style.justifyContent = 'center';
                     cell.style.fontSize = 'clamp(10px, 1.2vw, 13px)';
                     cell.title = `Date: ${day.date}, Commits: ${day.totalCommits}`;
+                    cell.onclick = function(ev) {
+                        var det = commitDetails[day.date];
+                        if (det && det.length > 0) showTooltip('Date: ' + day.date, det, ev);
+                        else hideTooltip();
+                    };
 
                     const dateNum = new Date(day.date).getDate();
                     cell.textContent = dateNum;
@@ -1078,6 +1142,17 @@
                         cell.style.color = intensity > 0.5 ? '#fff' : 'inherit';
                         cell.textContent = val > 99 ? '99+' : val;
                     }
+                    (function(dd, hh) {
+                        cell.onclick = function(ev) {
+                            var key = dd + '-' + hh;
+                            var det = heatmapDetails[key];
+                            if (det && det.length > 0) {
+                                showTooltip(DAYS[dd] + ' ' + hh + ':00', det, ev);
+                            } else {
+                                hideTooltip();
+                            }
+                        };
+                    })(d, h);
                     cell.title = DAYS[d] + ' ' + h + ':00 - ' + val + ' commits';
                     row.appendChild(cell);
                 }
@@ -1203,12 +1278,79 @@
             });
         }
 
+        function showTooltip(header, details, event) {
+            const tooltip = document.getElementById('commitTooltip');
+            const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+            let html = '<div class="tt-header">' + header + '</div>';
+            const show = details.slice(-15);
+            for (const d of show) {
+                var timeStr = d.d ? d.d + ' ' + d.t : d.t;
+                html += '<div class="tt-row"><span class="tt-time">' + timeStr + '</span><span class="tt-author">' + escapeHtml(d.a) + '</span><span class="tt-msg">' + escapeHtml(d.m) + '</span></div>';
+            }
+            if (details.length > 15) {
+                html += '<div class="tt-more">… and ' + (details.length - 15) + ' more</div>';
+            }
+            tooltip.innerHTML = html;
+            tooltip.style.display = 'block';
+
+            var ex = event.clientX || (event.touches ? event.touches[0].clientX : 0);
+            var ey = event.clientY || (event.touches ? event.touches[0].clientY : 0);
+            var tw = tooltip.offsetWidth;
+            var th = tooltip.offsetHeight;
+            var wx = window.innerWidth;
+            var wy = window.innerHeight;
+
+            var left = ex + 12;
+            var top_ = ey - 10;
+            if (left + tw > wx - 10) left = ex - tw - 12;
+            if (top_ + th > wy - 10) top_ = ey - th - 20;
+            if (top_ < 4) top_ = 4;
+            tooltip.style.left = left + 'px';
+            tooltip.style.top = top_ + 'px';
+        }
+
+        function escapeHtml(str) {
+            var div = document.createElement('div');
+            div.appendChild(document.createTextNode(str));
+            return div.innerHTML;
+        }
+
+        function addChartClick(chart, details) {
+            if (!chart || !details) return;
+    chart.options.onClick = function(ev, el) {
+        if (el && el.length > 0) {
+            var label = chart.data.labels[el[0].index];
+            var d = details[label];
+            if (d && d.length > 0) showTooltip('Date: ' + label, d, ev);
+            else hideTooltip();
+        } else {
+            hideTooltip();
+        }
+    };
+}
+
+
+        function hideTooltip() {
+            document.getElementById('commitTooltip').style.display = 'none';
+        }
+
+        document.addEventListener('click', function(e) {
+            var t = document.getElementById('commitTooltip');
+            if (t.style.display === 'block' && !t.contains(e.target)) {
+                var isChartClick = e.target.closest && (e.target.closest('canvas') || e.target.closest('.heatmap-table td') || e.target.closest('#calendar'));
+                if (!isChartClick) hideTooltip();
+            }
+        });
+
         const fileStats = {{FILE_STATS}};
         const ownership = {{OWNERSHIP}};
         const dirOwnership = {{DIR_OWNERSHIP}};
         const weeklyHourlyGrid = {{WEEKLY_HOURLY_GRID}};
         const weeklyHourlyMax = {{WEEKLY_HOURLY_MAX}};
         const wordFreq = {{WORD_FREQ}};
+        var commitDetails = {{COMMIT_DETAILS}};
+        var heatmapDetails = {{HEATMAP_DETAILS}};
+        addChartClick(commitChart, commitDetails);
 
         const calendarData = {{CALENDAR_DATA}};
         renderCalendar(calendarData);
@@ -1226,5 +1368,6 @@
             });
         });
     </script>
+    <div id="commitTooltip" class="commit-tooltip" onclick="this.style.display='none'" ontouchstart="this.style.display='none'"></div>
 </body>
 </html>

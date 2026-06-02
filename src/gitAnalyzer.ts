@@ -47,6 +47,8 @@ export interface ContributionResult {
     fileStats: FileChangeStats[];
     ownership: OwnershipEntry[];
     wordFreq: { [word: string]: number };
+    commitDetails: { [date: string]: { t: string; a: string; m: string }[] };
+    heatmapDetails: { [dayHour: string]: { d: string; t: string; a: string; m: string }[] };
 }
 
 export interface GitAnalyzerConfig {
@@ -199,13 +201,15 @@ export class GitContributionAnalyzer {
             const rawOutput = await this.git.raw(rawArgs);
 
             if (!rawOutput || !rawOutput.trim()) {
-                return { authorStats: {}, fileStats: [], ownership: [], wordFreq: {} };
+                return { authorStats: {}, fileStats: [], ownership: [], wordFreq: {}, commitDetails: {}, heatmapDetails: {} };
             }
 
             const stats: { [author: string]: AuthorStats } = {};
             const allFileChanges = new Map<string, { commits: number; insertions: number; deletions: number }>();
             const allFileAuthorLines = new Map<string, Map<string, number>>();
             const allWordFreq = new Map<string, number>();
+            const commitDetails: { [date: string]: { t: string; a: string; m: string }[] } = {};
+            const heatmapDetails: { [dayHour: string]: { d: string; t: string; a: string; m: string }[] } = {};
             const STOP_WORDS = new Set([
                 'the','a','an','and','or','but','in','on','at','to','for',
                 'of','with','by','from','as','is','was','are','were','be',
@@ -315,6 +319,14 @@ export class GitContributionAnalyzer {
                         files: 0
                     };
                 }
+
+                const commitMsg = subject.length > 50 ? subject.substring(0, 50) + '…' : subject;
+                const commitTime = date.format('HH:mm');
+                if (!commitDetails[dateKey]) commitDetails[dateKey] = [];
+                commitDetails[dateKey].push({ t: commitTime, a: author, m: commitMsg });
+                const dhKey = dayOfWeek + '-' + hourNum;
+                if (!heatmapDetails[dhKey]) heatmapDetails[dhKey] = [];
+                heatmapDetails[dhKey].push({ d: dateKey, t: commitTime, a: author, m: commitMsg });
 
                 const hourKey = date.format('HH');
                 if (!stats[author].hourlyStats[hourKey]) {
@@ -480,7 +492,7 @@ export class GitContributionAnalyzer {
                 wordFreq[word] = count;
             }
 
-            return { authorStats: stats, fileStats, ownership, wordFreq };
+            return { authorStats: stats, fileStats, ownership, wordFreq, commitDetails, heatmapDetails };
         } catch (error) {
             console.error('Error analyzing git log:', error);
             throw error;
