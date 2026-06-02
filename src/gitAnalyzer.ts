@@ -155,7 +155,14 @@ export class GitContributionAnalyzer {
         return moment();
     }
 
-    async getContributionStats(days: number = 7, startDateStr?: string, endDateStr?: string, authorFilter?: string, repoPath?: string): Promise<ContributionResult> {
+    async getBranches(repoPath?: string): Promise<string[]> {
+        try {
+            const raw = await this.git.raw(['branch', '--format=%(refname:short)']);
+            return raw.trim().split('\n').filter(Boolean);
+        } catch { return ['main']; }
+    }
+
+    async getContributionStats(days: number = 7, startDateStr?: string, endDateStr?: string, authorFilter?: string, repoPath?: string, branch?: string): Promise<ContributionResult> {
         let endDate: moment.Moment;
         let startDate: moment.Moment;
 
@@ -177,7 +184,7 @@ export class GitContributionAnalyzer {
         try {
             const rawArgs = [
                 'log',
-                '--all',
+                branch || '--all',
                 '--no-merges',
                 '--numstat',
                 '--date=iso-strict',

@@ -307,6 +307,11 @@
                     {{REPO_OPTIONS}}
                 </select>
             </div>
+            <div class="repo-selector">
+                <select id="branchSelect">
+                    <option value="--all">All branches</option>
+                </select>
+            </div>
             <div class="developer-selector">
                 <select id="developerSelect">
                     <option value="all">All developers</option>
@@ -489,6 +494,14 @@
             vscode.postMessage({
                 command: 'repoChanged',
                 repoIndex: parseInt(this.value)
+            });
+        });
+
+        const branchSelect = document.getElementById('branchSelect');
+        branchSelect.addEventListener('change', function(e) {
+            vscode.postMessage({
+                command: 'branchChanged',
+                branch: this.value
             });
         });
 
@@ -850,6 +863,18 @@
                         } else {
                             developerSelect.value = 'all';
                         }
+                    }
+                    break;
+                case 'updateBranches':
+                    var bs = document.getElementById('branchSelect');
+                    if (bs && message.branches) {
+                        var cur = bs.value;
+                        bs.innerHTML = '<option value="--all">All branches</option>' +
+                            message.branches.filter(function(b) { return b && b !== '--all'; }).map(function(b) {
+                                return '<option value="' + b + '">' + b + '</option>';
+                            }).join('');
+                        if (cur && message.branches.includes(cur)) bs.value = cur;
+                        else bs.value = '--all';
                     }
                     break;
                 case 'updateData':

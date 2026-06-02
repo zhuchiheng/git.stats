@@ -50,6 +50,11 @@ export class ContributionVisualization {
     private commitDetailsCache: { [date: string]: { t: string; a: string; m: string }[] } = {};
     private heatmapDetailsCache: { [dayHour: string]: { d: string; t: string; a: string; m: string }[] } = {};
     private autoRangeActive: boolean = true;
+    private selectedBranch: string = '--all';
+    private branchList: string[] = [];
+    private lastRangeDays: number = 0;
+    private lastRangeStart?: string;
+    private lastRangeEnd?: string;
 
     constructor(
         private context: vscode.ExtensionContext,
@@ -171,9 +176,12 @@ export class ContributionVisualization {
     public async handleTimeRangeChange(days: number, startDate?: string, endDate?: string) {
         try {
             this.autoRangeActive = (days === 0);
+            this.lastRangeDays = days;
+            this.lastRangeStart = startDate;
+            this.lastRangeEnd = endDate;
             this.analyzer = this.analyzers[this.currentRepoIndex];
 
-            const result = await this.analyzer.getContributionStats(days, startDate, endDate);
+            const result = await this.analyzer.getContributionStats(days, startDate, endDate, undefined, undefined, this.selectedBranch);
             this.globalCache = result.authorStats;
             this.fileStatsCache = result.fileStats;
             this.ownershipCache = result.ownership;
@@ -193,6 +201,17 @@ export class ContributionVisualization {
         } catch (error) {
             console.error('Error updating time range:', error);
         }
+    }
+
+    private async loadBranches() {
+        try {
+            const repoPath = this.gitRepos[this.currentRepoIndex]?.path;
+            const branches = await this.analyzers[this.currentRepoIndex].getBranches(repoPath);
+            this.branchList = branches;
+            if (this.panel?.webview) {
+                this.panel.webview.postMessage({ command: 'updateBranches', branches });
+            }
+        } catch { }
     }
 
     private async applyDeveloperFilter(developer?: string) {
@@ -258,7 +277,13 @@ export class ContributionVisualization {
                             break;
                         case 'repoChanged':
                             this.currentRepoIndex = message.repoIndex;
-                            await this.handleTimeRangeChange(7);
+                            this.selectedBranch = '--all';
+                            await this.loadBranches();
+                            await this.handleTimeRangeChange(this.lastRangeDays, this.lastRangeStart, this.lastRangeEnd);
+                            break;
+                        case 'branchChanged':
+                            this.selectedBranch = message.branch;
+                            await this.handleTimeRangeChange(this.lastRangeDays, this.lastRangeStart, this.lastRangeEnd);
                             break;
                         case 'exportPng':
                             await this.handleExportPng(message.dataUrl, message.defaultFilename);
@@ -284,6 +309,7 @@ export class ContributionVisualization {
         if (this.panel) {
             this.panel.webview.html = await this.getWebviewContent(result, commitData, changeData, hourlyCommitData, hourlyChangeData);
         }
+        await this.loadBranches();
     }
 
     private async handleDeveloperChange(developer: string) {
