@@ -1329,7 +1329,7 @@
         function renderTooltip(tooltip, expanded) {
             var details = tooltip._details;
             if (!details) return;
-            var show = expanded ? details : details.slice(-15);
+            var show = (expanded ? details : details.slice(-15)).slice().reverse();
             var html = '<div class="tt-header">' + tooltip._header + '</div>';
             for (var i = 0; i < show.length; i++) {
                 var d = show[i];
