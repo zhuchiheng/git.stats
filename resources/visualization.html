@@ -1280,17 +1280,9 @@
 
         function showTooltip(header, details, event) {
             const tooltip = document.getElementById('commitTooltip');
-            const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-            let html = '<div class="tt-header">' + header + '</div>';
-            const show = details.slice(-15);
-            for (const d of show) {
-                var timeStr = d.d ? d.d + ' ' + d.t : d.t;
-                html += '<div class="tt-row"><span class="tt-time">' + timeStr + '</span><span class="tt-author">' + escapeHtml(d.a) + '</span><span class="tt-msg">' + escapeHtml(d.m) + '</span></div>';
-            }
-            if (details.length > 15) {
-                html += '<div class="tt-more">… and ' + (details.length - 15) + ' more</div>';
-            }
-            tooltip.innerHTML = html;
+            tooltip._header = header;
+            tooltip._details = details;
+            renderTooltip(tooltip, false);
             tooltip.style.display = 'block';
 
             var ex = event.clientX || (event.touches ? event.touches[0].clientX : 0);
@@ -1307,6 +1299,26 @@
             if (top_ < 4) top_ = 4;
             tooltip.style.left = left + 'px';
             tooltip.style.top = top_ + 'px';
+        }
+
+        function renderTooltip(tooltip, expanded) {
+            var details = tooltip._details;
+            if (!details) return;
+            var show = expanded ? details : details.slice(-15);
+            var html = '<div class="tt-header">' + tooltip._header + '</div>';
+            for (var i = 0; i < show.length; i++) {
+                var d = show[i];
+                var timeStr = d.d ? d.d + ' ' + d.t : d.t;
+                html += '<div class="tt-row"><span class="tt-time">' + timeStr + '</span><span class="tt-author">' + escapeHtml(d.a) + '</span><span class="tt-msg">' + escapeHtml(d.m) + '</span></div>';
+            }
+            if (!expanded && details.length > 15) {
+                html += '<div class="tt-more" onclick="event.stopPropagation();expandTooltip()">… and ' + (details.length - 15) + ' more</div>';
+            }
+            tooltip.innerHTML = html;
+        }
+
+        function expandTooltip() {
+            renderTooltip(document.getElementById('commitTooltip'), true);
         }
 
         function escapeHtml(str) {
