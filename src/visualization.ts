@@ -572,17 +572,21 @@ export class ContributionVisualization {
     }
 
     private prepareOwnershipTree(ownership: OwnershipEntry[], fileCommits: { [path: string]: number }): any[] {
+        // normalize paths: replace backslashes, strip drive letters
+        const norm = (p: string) => p.replace(/\\/g, '/').replace(/^[A-Za-z]:\//, '');
         const rootMap = new Map<string, any>();
         const all = new Map<string, any>();
         for (const o of ownership) {
-            const leaf: any = { n: o.path.split('/').pop()!, p: o.path, t: 'f', l: o.totalLines, c: fileCommits[o.path] || 0, ac: Object.keys(o.linesByAuthor).length, pa: o.primaryAuthor, pp: o.primaryAuthorPercentage, lb: o.linesByAuthor, ch: [] };
-            all.set(o.path, leaf);
+            const np = norm(o.path);
+            const leaf: any = { n: np.includes('/') ? np.split('/').pop()! : np, p: np, t: 'f', l: o.totalLines, c: fileCommits[o.path] || 0, ac: Object.keys(o.linesByAuthor).length, pa: o.primaryAuthor, pp: o.primaryAuthorPercentage, lb: o.linesByAuthor, ch: [] };
+            all.set(np, leaf);
         }
         const sorted = [...ownership].sort((a, b) => a.path.length - b.path.length);
         for (const o of sorted) {
-            const leaf = all.get(o.path)!;
-            const parts = o.path.split('/');
-            if (parts.length <= 1) { rootMap.set(o.path, leaf); continue; }
+            const np = norm(o.path);
+            const leaf = all.get(np)!;
+            if (!np.includes('/')) { rootMap.set(np, leaf); continue; }
+            const parts = np.split('/');
             const dirPath = parts.slice(0, -1).join('/');
             let parent = all.get(dirPath);
             if (!parent) {
@@ -613,12 +617,14 @@ export class ContributionVisualization {
                 const toRemove: number[] = [];
                 for (let i = 0; i < n.ch.length; i++) {
                     const m = n.ch[i];
-                    if (all.has(m.p) && all.get(m.p) !== m) {
-                        const parentOfM = all.get(m.p);
+                    const mNorm = norm(m.p);
+                    const nNorm = norm(n.p);
+                    if (all.has(mNorm) && all.get(mNorm) !== m) {
+                        const parentOfM = all.get(mNorm);
                         if (parentOfM && parentOfM.t === 'd') {
-                            const pp = m.p;
-                            const hasDirectChild = ownership.some(o2 => o2.path.startsWith(pp + '/') && o2.path.split('/').length === pp.split('/').length + 2);
-                            if (!hasDirectChild) toRemove.push(i);
+                            const mp = mNorm;
+                            const hasDC = ownership.some(o2 => norm(o2.path).startsWith(mp + '/') && norm(o2.path).split('/').length === mp.split('/').length + 2);
+                            if (!hasDC) toRemove.push(i);
                         }
                     }
                 }
@@ -627,17 +633,18 @@ export class ContributionVisualization {
             }
         }
         const roots: any[] = [];
+        const seen = new Set<string>();
         for (const o of ownership) {
-            const parts = o.path.split('/');
-            if (parts.length === 1) { if (rootMap.has(o.path)) { roots.push(rootMap.get(o.path)); rootMap.delete(o.path); } continue; }
-            const top = parts[0];
-            if (!rootMap.has(top)) {
+            const np = norm(o.path);
+            if (!np.includes('/')) { if (rootMap.has(np)) { roots.push(rootMap.get(np)); rootMap.delete(np); } continue; }
+            const top = np.split('/')[0];
+            if (!seen.has(top)) {
+                seen.add(top);
                 const tn = all.get(top);
                 if (tn) roots.push(tn);
-                rootMap.set(top, tn || true);
             }
         }
-        for (const entry of all) { const n = entry[1]; if (n.t === 'd' && !n.p.includes('/') && !roots.find((r: any) => r.p === n.p)) roots.push(n); }
+        for (const entry of all) { const n = entry[1]; if (n.t === 'd' && !entry[0].includes('/') && !roots.find((r: any) => r.p === n.p)) roots.push(n); }
         return roots.sort((a: any, b: any) => b.l - a.l);
     }
 
