@@ -184,6 +184,26 @@
             margin-right: 4px;
             vertical-align: middle;
         }
+        .otree { font-size: 13px; line-height: 1.8; user-select: none; }
+        .otree-row { display: flex; align-items: center; gap: 6px; padding: 2px 4px; border-radius: 4px; cursor: default; }
+        .otree-row:hover { background-color: var(--vscode-list-hoverBackground); }
+        .otree-toggle { width: 18px; text-align: center; cursor: pointer; flex-shrink: 0; color: var(--vscode-foreground); opacity: 0.6; }
+        .otree-name { flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+        .otree-name.d { font-weight: 500; }
+        .otree-name.f { opacity: 0.85; }
+        .otree-author { flex-shrink: 0; min-width: 70px; text-align: right; font-weight: 500; font-size: 12px; }
+        .otree-bar-w { flex: 1; min-width: 60px; max-width: 120px; height: 10px; background: var(--vscode-editor-background); border-radius: 5px; overflow: hidden; }
+        .otree-bar { height: 100%; border-radius: 5px; }
+        .otree-pct { flex-shrink: 0; width: 38px; text-align: right; font-size: 11px; opacity: 0.8; }
+        .otree-lines { flex-shrink: 0; width: 48px; text-align: right; font-size: 11px; opacity: 0.7; }
+        .otree-children { padding-left: 22px; }
+        .otree-heat-0 { background-color: rgba(33,150,243,0.03); }
+        .otree-heat-1 { background-color: rgba(33,150,243,0.08); }
+        .otree-heat-2 { background-color: rgba(33,150,243,0.15); }
+        .otree-heat-3 { background-color: rgba(33,150,243,0.25); }
+        .otree-heat-4 { background-color: rgba(244,67,54,0.10); }
+        .otree-heat-5 { background-color: rgba(244,67,54,0.20); }
+        .otree-heat-6 { background-color: rgba(244,67,54,0.35); }
         .export-btn {
             background: none;
             border: 1px solid var(--vscode-dropdown-border);
@@ -414,30 +434,9 @@
             </div>
         </div>
 
-        <div class="chart-container" style="height: auto; max-height: 600px; overflow-y: auto;">
-            <h2 class="chart-title">Code Ownership — Directory</h2>
-            <table class="summary-table" id="dirOwnershipTable">
-                <tr>
-                    <th>Directory</th>
-                    <th>Primary Author</th>
-                    <th>Ownership</th>
-                    <th>Total Lines</th>
-                </tr>
-                <tbody id="dirOwnershipBody"></tbody>
-            </table>
-        </div>
-
-        <div class="chart-container" style="height: auto; max-height: 600px; overflow-y: auto;">
-            <h2 class="chart-title">Code Ownership — Files</h2>
-            <table class="summary-table" id="fileOwnershipTable">
-                <tr>
-                    <th>File</th>
-                    <th>Primary Author</th>
-                    <th>Ownership</th>
-                    <th>Total Lines</th>
-                </tr>
-                <tbody id="fileOwnershipBody"></tbody>
-            </table>
+        <div class="chart-container" style="height: auto; max-height: 800px; overflow-y: auto;">
+            <h2 class="chart-title">Code Ownership — Tree</h2>
+            <div id="ownershipTreeContainer"></div>
         </div>
     </div>
     <script>
@@ -906,8 +905,8 @@
                     if (message.weeklyHourlyGrid) {
                         renderHeatmap(message.weeklyHourlyGrid, message.weeklyHourlyMax || 1);
                     }
-                    if (message.dirOwnership && message.ownership) {
-                        renderOwnership(message.dirOwnership, message.ownership);
+                    if (message.dirOwnership) {
+                        renderOwnershipTree(message.dirOwnership, document.getElementById('ownershipTreeContainer'));
                     }
 
                     if (message.wordFreq) {
@@ -1186,38 +1185,47 @@
             container.appendChild(table);
         }
 
-        function renderOwnership(dirOwnership, fileOwnership) {
-            const dirTbody = document.getElementById('dirOwnershipBody');
-            if (dirTbody) {
-                dirTbody.innerHTML = '';
-                const limit = Math.min(dirOwnership.length, 50);
-                for (let i = 0; i < limit; i++) {
-                    const d = dirOwnership[i];
-                    const barWidth = Math.max(d.primaryAuthorPercentage, 1);
-                    const row = document.createElement('tr');
-                    row.innerHTML = '<td class="ownership-dir">' + d.directory + '</td>'
-                        + '<td>' + d.primaryAuthor + '</td>'
-                        + '<td><span class="ownership-bar" style="width:' + barWidth + 'px;background-color:rgba(33,150,243,0.6);"></span>' + d.primaryAuthorPercentage + '%</td>'
-                        + '<td>' + d.totalLines + '</td>';
-                    dirTbody.appendChild(row);
+        function renderOwnershipTree(nodes, container) {
+            if (!container) return;
+            container.innerHTML = '';
+            if (!nodes || nodes.length === 0) { container.innerHTML = '<div style="opacity:0.5;padding:8px;">No data</div>'; return; }
+            var maxCommits = 1;
+            function count(c) { for (var i = 0; i < c.length; i++) { if (c[i].c > maxCommits) maxCommits = c[i].c; count(c[i].ch); } }
+            count(nodes);
+            function heat(v) { var r = v / maxCommits; if (r < 0.1) return 0; if (r < 0.25) return 1; if (r < 0.4) return 2; if (r < 0.55) return 3; if (r < 0.7) return 4; if (r < 0.85) return 5; return 6; }
+            function render(n, depth) {
+                var wrap = document.createElement('div');
+                var row = document.createElement('div');
+                row.className = 'otree-row otree-heat-' + heat(n.c);
+                var hasCh = n.ch && n.ch.length > 0;
+                var toggle = document.createElement('span');
+                toggle.className = 'otree-toggle';
+                toggle.textContent = hasCh ? (n._expanded ? '▾' : '▸') : (n.t === 'd' ? '·' : '');
+                if (hasCh) { toggle.onclick = function(e) { e.stopPropagation(); n._expanded = !n._expanded; renderOwnershipTree(nodes, container); }; }
+                row.appendChild(toggle);
+                var nm = document.createElement('span');
+                nm.className = 'otree-name ' + n.t;
+                nm.textContent = n.n;
+                if (depth > 0) nm.style.paddingLeft = Math.min(depth * 12, 60) + 'px';
+                row.appendChild(nm);
+                if (n.ac > 0) {
+                    var a = document.createElement('span'); a.className = 'otree-author'; a.textContent = n.pa; row.appendChild(a);
+                    var bw = document.createElement('div'); bw.className = 'otree-bar-w';
+                    var bar = document.createElement('div'); bar.className = 'otree-bar'; bar.style.width = n.pp + '%';
+                    bar.style.backgroundColor = n.t === 'd' ? 'rgba(33,150,243,0.6)' : 'rgba(76,175,80,0.6)';
+                    bw.appendChild(bar); row.appendChild(bw);
+                    var pct = document.createElement('span'); pct.className = 'otree-pct'; pct.textContent = n.pp + '%'; row.appendChild(pct);
+                    var ln = document.createElement('span'); ln.className = 'otree-lines'; ln.textContent = n.l; row.appendChild(ln);
                 }
-            }
-
-            const fileTbody = document.getElementById('fileOwnershipBody');
-            if (fileTbody) {
-                fileTbody.innerHTML = '';
-                const limit = Math.min(fileOwnership.length, 100);
-                for (let i = 0; i < limit; i++) {
-                    const o = fileOwnership[i];
-                    const barWidth = Math.max(o.primaryAuthorPercentage, 1);
-                    const row = document.createElement('tr');
-                    row.innerHTML = '<td title="' + o.path + '">' + o.path + '</td>'
-                        + '<td>' + o.primaryAuthor + '</td>'
-                        + '<td><span class="ownership-bar" style="width:' + barWidth + 'px;background-color:rgba(76,175,80,0.6);"></span>' + o.primaryAuthorPercentage + '%</td>'
-                        + '<td>' + o.totalLines + '</td>';
-                    fileTbody.appendChild(row);
+                wrap.appendChild(row);
+                if (n._expanded && hasCh) {
+                    var chDiv = document.createElement('div'); chDiv.className = 'otree-children';
+                    for (var i = 0; i < n.ch.length; i++) chDiv.appendChild(render(n.ch[i], depth + 1));
+                    wrap.appendChild(chDiv);
                 }
+                return wrap;
             }
+            for (var i = 0; i < nodes.length; i++) container.appendChild(render(nodes[i], 0));
         }
 
         function renderWordFreq(wordFreq) {
@@ -1393,7 +1401,7 @@
         renderCalendar(calendarData);
         renderFileStats(fileStats);
         renderHeatmap(weeklyHourlyGrid, weeklyHourlyMax);
-        renderOwnership(dirOwnership, ownership);
+        renderOwnershipTree(dirOwnership, document.getElementById('ownershipTreeContainer'));
         renderWordFreq(wordFreq);
 
         const developerSelect = document.getElementById('developerSelect');

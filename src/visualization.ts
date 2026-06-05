@@ -94,7 +94,9 @@ export class ContributionVisualization {
         const weeklyHourlyData = this.prepareWeeklyHourlyData(authors);
         const weeklyHourlyGrid = weeklyHourlyData.grid;
         const weeklyHourlyMax = weeklyHourlyData.max;
-        const dirOwnership = this.prepareDirectoryOwnership(this.ownershipCache);
+        const fc: { [key: string]: number } = {};
+        for (const f of this.fileStatsCache) fc[f.file] = f.totalCommits;
+        const dirOwnership = this.prepareOwnershipTree(this.ownershipCache, fc);
 
         if (this.panel?.webview) {
             this.panel.webview.postMessage({
@@ -146,8 +148,9 @@ export class ContributionVisualization {
             currentStreak: author.currentStreak || 0,
             longestStreak: author.longestStreak || 0
         }));
-
-        const dirOwnership = this.prepareDirectoryOwnership(this.ownershipCache);
+        var fc2: { [key: string]: number } = {};
+        for (var _i = 0; _i < this.fileStatsCache.length; _i++) { fc2[this.fileStatsCache[_i].file] = this.fileStatsCache[_i].totalCommits; }
+        const dirOwnership = this.prepareOwnershipTree(this.ownershipCache, fc2);
 
         if (this.panel) {
             await this.panel.webview.postMessage({
@@ -346,7 +349,9 @@ export class ContributionVisualization {
         const weeklyHourlyGrid = weeklyHourlyData.grid;
         const weeklyHourlyMax = weeklyHourlyData.max;
 
-        const dirOwnership = this.prepareDirectoryOwnership(result.ownership);
+        var fcm: { [key: string]: number } = {};
+        for (var _j = 0; _j < (result.fileStats || []).length; _j++) { fcm[result.fileStats[_j].file] = result.fileStats[_j].totalCommits; }
+        const dirOwnership = this.prepareOwnershipTree(result.ownership, fcm);
 
         try {
             const htmlPath = path.join(this.context.extensionPath, 'resources', 'visualization.html');
@@ -564,6 +569,76 @@ export class ContributionVisualization {
                 };
             })
             .sort((a, b) => b.totalLines - a.totalLines);
+    }
+
+    private prepareOwnershipTree(ownership: OwnershipEntry[], fileCommits: { [path: string]: number }): any[] {
+        const rootMap = new Map<string, any>();
+        const all = new Map<string, any>();
+        for (const o of ownership) {
+            const leaf: any = { n: o.path.split('/').pop()!, p: o.path, t: 'f', l: o.totalLines, c: fileCommits[o.path] || 0, ac: Object.keys(o.linesByAuthor).length, pa: o.primaryAuthor, pp: o.primaryAuthorPercentage, lb: o.linesByAuthor, ch: [] };
+            all.set(o.path, leaf);
+        }
+        const sorted = [...ownership].sort((a, b) => a.path.length - b.path.length);
+        for (const o of sorted) {
+            const leaf = all.get(o.path)!;
+            const parts = o.path.split('/');
+            if (parts.length <= 1) { rootMap.set(o.path, leaf); continue; }
+            const dirPath = parts.slice(0, -1).join('/');
+            let parent = all.get(dirPath);
+            if (!parent) {
+                parent = { n: dirPath.split('/').pop()!, p: dirPath, t: 'd', l: 0, c: 0, ac: 0, pa: '', pp: 0, lb: {} as any, ch: [] };
+                all.set(dirPath, parent);
+                const gpIdx = dirPath.lastIndexOf('/');
+                if (gpIdx > 0) {
+                    const gp = dirPath.substring(0, gpIdx);
+                    if (gp && !all.has(gp)) {
+                        all.set(gp, { n: gp.substring(gp.lastIndexOf('/') + 1), p: gp, t: 'd', l: 0, c: 0, ac: 0, pa: '', pp: 0, lb: {} as any, ch: [] });
+                    }
+                }
+            }
+            parent.ch.push(leaf);
+            parent.l += leaf.l; parent.c += leaf.c;
+            for (const entry of Object.entries(leaf.lb)) {
+                const a = entry[0], ln = entry[1] as number;
+                parent.lb[a] = (parent.lb[a] || 0) + ln;
+            }
+            parent.ac = Object.keys(parent.lb).length;
+            let ml = 0; let mp = '';
+            for (const entry of Object.entries(parent.lb)) { const a = entry[0], ln = entry[1] as number; if (ln > ml) { ml = ln; mp = a; } }
+            parent.pa = mp; parent.pp = parent.l > 0 ? Math.round(ml / parent.l * 100) : 0;
+        }
+        for (const entry of all) {
+            const n = entry[1];
+            if (n.t === 'd') {
+                const toRemove: number[] = [];
+                for (let i = 0; i < n.ch.length; i++) {
+                    const m = n.ch[i];
+                    if (all.has(m.p) && all.get(m.p) !== m) {
+                        const parentOfM = all.get(m.p);
+                        if (parentOfM && parentOfM.t === 'd') {
+                            const pp = m.p;
+                            const hasDirectChild = ownership.some(o2 => o2.path.startsWith(pp + '/') && o2.path.split('/').length === pp.split('/').length + 2);
+                            if (!hasDirectChild) toRemove.push(i);
+                        }
+                    }
+                }
+                for (let i = toRemove.length - 1; i >= 0; i--) n.ch.splice(toRemove[i], 1);
+                n.ch.sort((a: any, b: any) => b.l - a.l);
+            }
+        }
+        const roots: any[] = [];
+        for (const o of ownership) {
+            const parts = o.path.split('/');
+            if (parts.length === 1) { if (rootMap.has(o.path)) { roots.push(rootMap.get(o.path)); rootMap.delete(o.path); } continue; }
+            const top = parts[0];
+            if (!rootMap.has(top)) {
+                const tn = all.get(top);
+                if (tn) roots.push(tn);
+                rootMap.set(top, tn || true);
+            }
+        }
+        for (const entry of all) { const n = entry[1]; if (n.t === 'd' && !n.p.includes('/') && !roots.find((r: any) => r.p === n.p)) roots.push(n); }
+        return roots.sort((a: any, b: any) => b.l - a.l);
     }
 
     private async handleExportPng(dataUrl: string, defaultFilename: string) {
