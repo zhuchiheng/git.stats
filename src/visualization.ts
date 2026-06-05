@@ -208,8 +208,10 @@ export class ContributionVisualization {
             const repoPath = this.gitRepos[this.currentRepoIndex]?.path;
             const branches = await this.analyzers[this.currentRepoIndex].getBranches(repoPath);
             this.branchList = branches;
+            const hasMain = branches.includes('main');
+            this.selectedBranch = hasMain ? 'main' : '--all';
             if (this.panel?.webview) {
-                this.panel.webview.postMessage({ command: 'updateBranches', branches });
+                this.panel.webview.postMessage({ command: 'updateBranches', branches, defaultBranch: this.selectedBranch });
             }
         } catch { }
     }
@@ -310,6 +312,9 @@ export class ContributionVisualization {
             this.panel.webview.html = await this.getWebviewContent(result, commitData, changeData, hourlyCommitData, hourlyChangeData);
         }
         await this.loadBranches();
+        if (this.selectedBranch !== '--all') {
+            await this.handleTimeRangeChange(this.lastRangeDays, this.lastRangeStart, this.lastRangeEnd);
+        }
     }
 
     private async handleDeveloperChange(developer: string) {

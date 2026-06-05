@@ -874,7 +874,7 @@
                                 return '<option value="' + b + '">' + b + '</option>';
                             }).join('');
                         if (cur && message.branches.includes(cur)) bs.value = cur;
-                        else bs.value = '--all';
+                        else bs.value = message.defaultBranch || '--all';
                     }
                     break;
                 case 'updateData':
