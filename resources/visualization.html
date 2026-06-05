@@ -1193,7 +1193,7 @@
                 container.innerHTML = '<div style="opacity:0.5;padding:8px;">No data</div>';
                 return;
             }
-            function norm(p) { return p.replace(/\\/g, '/').replace(/^[A-Za-z]:\//, ''); }
+            function norm(p) { return p.replace(/\\/g, '/').replace(/^[A-Za-z]:\//, '').replace(/^\//, ''); }
             var commitFreq = {};
             if (fileStatsData) for (var _i = 0; _i < fileStatsData.length; _i++) commitFreq[fileStatsData[_i].file] = fileStatsData[_i].totalCommits;
             var all = {};
@@ -1207,7 +1207,15 @@
                 var parts = paths[_i3].split('/');
                 for (var d = 1; d < parts.length; d++) {
                     var dirP = parts.slice(0, d).join('/');
-                    if (!all[dirP]) all[dirP] = { n: parts[d-1], p: dirP, t: 'd', l: 0, c: 0, ac: 0, pa: '', pp: 0, lb: {}, ch: [] };
+                    if (!dirP) continue;
+                    var existing = all[dirP];
+                    if (!existing) {
+                        all[dirP] = { n: parts[d-1], p: dirP, t: 'd', l: 0, c: 0, ac: 0, pa: '', pp: 0, lb: {}, ch: [] };
+                    } else if (existing.t === 'f') {
+                        // file collides with directory name; convert to directory, move file as child
+                        var fileChild = { n: existing.n, p: existing.p, t: 'f', l: existing.l, c: existing.c, ac: existing.ac, pa: existing.pa, pp: existing.pp, lb: existing.lb, ch: [] };
+                        existing.t = 'd'; existing.n = dirP.split('/').pop(); existing.l = fileChild.l; existing.c = fileChild.c; existing.ac = 0; existing.pa = ''; existing.pp = 0; existing.lb = {}; existing.ch = [fileChild];
+                    }
                 }
             }
             for (var p in all) {
