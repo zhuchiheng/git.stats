@@ -2,6 +2,10 @@ import simpleGit, { SimpleGit } from 'simple-git';
 import moment from 'moment';
 import * as fs from 'fs';
 import * as path from 'path';
+import { Segment, useDefault } from 'segmentit';
+
+const _segmenter = new Segment();
+useDefault(_segmenter);
 
 export interface DailyStats {
     commits: number;
@@ -289,25 +293,16 @@ export class GitContributionAnalyzer {
                     };
                 }
 
-                const rawTokens = subject.toLowerCase().split(/[^a-z0-9\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff]+/);
                 const words: string[] = [];
-                const CJK_RE = /^[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff]{2}$/;
-                for (const token of rawTokens) {
-                    if (token.length < 2) continue;
-                    const hasCJK = /[\u4e00-\u9fff]/.test(token);
-                    if (hasCJK) {
-                        const chars = Array.from(token);
-                        for (let i = 0; i < chars.length - 1; i++) {
-                            const bigram = chars[i] + chars[i + 1];
-                            if (CJK_RE.test(bigram) && !(CN_STOP.has(chars[i]) && CN_STOP.has(chars[i + 1])) && !STOP_WORDS.has(bigram)) {
-                                words.push(bigram);
-                            }
-                        }
-                    } else {
-                        if (token.length > 2 && !STOP_WORDS.has(token)) {
-                            words.push(token);
-                        }
-                    }
+                const segs = _segmenter.doSegment(subject);
+                const CJK = /^[\u4e00-\u9fff]+$/;
+                for (const s of segs) {
+                    const w = s.w.trim();
+                    if (w.length < 2 && !CJK.test(w)) continue;
+                    const lower = w.toLowerCase();
+                    if (lower.length > 2 && STOP_WORDS.has(lower)) continue;
+                    if (w.length === 1 && CN_STOP.has(w)) continue;
+                    words.push(w);
                 }
                 for (const word of words) {
                     allWordFreq.set(word, (allWordFreq.get(word) || 0) + 1);
