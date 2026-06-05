@@ -349,10 +349,6 @@ export class ContributionVisualization {
         const weeklyHourlyGrid = weeklyHourlyData.grid;
         const weeklyHourlyMax = weeklyHourlyData.max;
 
-        var fcm: { [key: string]: number } = {};
-        for (var _j = 0; _j < (result.fileStats || []).length; _j++) { fcm[result.fileStats[_j].file] = result.fileStats[_j].totalCommits; }
-        const dirOwnership = this.prepareOwnershipTree(result.ownership, fcm);
-
         try {
             const htmlPath = path.join(this.context.extensionPath, 'resources', 'visualization.html');
             let htmlContent = await fs.readFile(htmlPath, 'utf-8');
@@ -398,7 +394,6 @@ export class ContributionVisualization {
                 .replace('{{CALENDAR_DATA}}', JSON.stringify(calendarData))
                 .replace('{{FILE_STATS}}', JSON.stringify(result.fileStats.slice(0, 100)))
                 .replace('{{OWNERSHIP}}', JSON.stringify(result.ownership.slice(0, 100)))
-                .replace('{{DIR_OWNERSHIP}}', JSON.stringify(dirOwnership.slice(0, 50)))
                 .replace('{{WEEKLY_HOURLY_GRID}}', JSON.stringify(weeklyHourlyGrid))
                 .replace('{{WEEKLY_HOURLY_MAX}}', String(weeklyHourlyMax))
                 .replace('{{WORD_FREQ}}', JSON.stringify(result.wordFreq || {}))

@@ -905,8 +905,8 @@
                     if (message.weeklyHourlyGrid) {
                         renderHeatmap(message.weeklyHourlyGrid, message.weeklyHourlyMax || 1);
                     }
-                    if (message.dirOwnership) {
-                        renderOwnershipTree(message.dirOwnership, document.getElementById('ownershipTreeContainer'));
+                    if (message.ownership && message.fileStats) {
+                        renderOwnershipTree(message.ownership, message.fileStats, document.getElementById('ownershipTreeContainer'));
                     }
 
                     if (message.wordFreq) {
@@ -1185,13 +1185,67 @@
             container.appendChild(table);
         }
 
-        function renderOwnershipTree(nodes, container) {
+        var _otExp = {};
+        function renderOwnershipTree(ownershipData, fileStatsData, container) {
             if (!container) return;
             container.innerHTML = '';
-            if (!nodes || nodes.length === 0) { container.innerHTML = '<div style="opacity:0.5;padding:8px;">No data</div>'; return; }
+            if (!ownershipData || ownershipData.length === 0) {
+                container.innerHTML = '<div style="opacity:0.5;padding:8px;">No data</div>';
+                return;
+            }
+            function norm(p) { return p.replace(/\\/g, '/').replace(/^[A-Za-z]:\//, ''); }
+            var commitFreq = {};
+            if (fileStatsData) for (var _i = 0; _i < fileStatsData.length; _i++) commitFreq[fileStatsData[_i].file] = fileStatsData[_i].totalCommits;
+            var all = {};
+            for (var _i2 = 0; _i2 < ownershipData.length; _i2++) {
+                var o = ownershipData[_i2];
+                var np = norm(o.path);
+                all[np] = { n: np.split('/').pop(), p: np, t: 'f', l: o.totalLines, c: commitFreq[o.path] || 0, ac: Object.keys(o.linesByAuthor).length, pa: o.primaryAuthor, pp: o.primaryAuthorPercentage, lb: o.linesByAuthor, ch: [] };
+            }
+            var paths = Object.keys(all);
+            for (var _i3 = 0; _i3 < paths.length; _i3++) {
+                var parts = paths[_i3].split('/');
+                for (var d = 1; d < parts.length; d++) {
+                    var dirP = parts.slice(0, d).join('/');
+                    if (!all[dirP]) all[dirP] = { n: parts[d-1], p: dirP, t: 'd', l: 0, c: 0, ac: 0, pa: '', pp: 0, lb: {}, ch: [] };
+                }
+            }
+            for (var p in all) {
+                var node = all[p];
+                if (node.t === 'f') {
+                    var idx = p.lastIndexOf('/');
+                    if (idx >= 0) { var par = all[p.substring(0, idx)]; if (par && par.ch.indexOf(node) < 0) par.ch.push(node); }
+                }
+            }
+            for (var p in all) {
+                var node = all[p];
+                if (node.t === 'd') {
+                    var idx = p.lastIndexOf('/');
+                    if (idx >= 0) { var par = all[p.substring(0, idx)]; if (par && par.ch.indexOf(node) < 0) par.ch.push(node); }
+                }
+            }
+            var sortedDirs = Object.keys(all).filter(function(k) { return all[k].t === 'd'; }).sort(function(a, b) { return b.length - a.length; });
+            for (var _i4 = 0; _i4 < sortedDirs.length; _i4++) {
+                var n = all[sortedDirs[_i4]];
+                n.ch.sort(function(a, b) { return b.l - a.l; });
+                if (n.l > 0) continue;
+                for (var _c = 0; _c < n.ch.length; _c++) {
+                    var child = n.ch[_c];
+                    n.l += child.l; n.c += child.c;
+                    for (var en in child.lb) { if (child.lb.hasOwnProperty(en)) n.lb[en] = (n.lb[en] || 0) + child.lb[en]; }
+                }
+                n.ac = Object.keys(n.lb).length;
+                var ml = 0, mp = '';
+                for (var en2 in n.lb) { if (n.lb.hasOwnProperty(en2)) { if (n.lb[en2] > ml) { ml = n.lb[en2]; mp = en2; } } }
+                n.pa = mp; n.pp = n.l > 0 ? Math.round(ml / n.l * 100) : 0;
+            }
+            var roots = [];
+            for (var p in all) { if (!p.includes('/') && roots.indexOf(all[p]) < 0) roots.push(all[p]); }
+            roots.sort(function(a, b) { return b.l - a.l; });
+
             var maxCommits = 1;
-            function count(c) { for (var i = 0; i < c.length; i++) { if (c[i].c > maxCommits) maxCommits = c[i].c; count(c[i].ch); } }
-            count(nodes);
+            function countMax(arr) { for (var i = 0; i < arr.length; i++) { if (arr[i].c > maxCommits) maxCommits = arr[i].c; if (arr[i].ch) countMax(arr[i].ch); } }
+            countMax(roots);
             function heat(v) { var r = v / maxCommits; if (r < 0.1) return 0; if (r < 0.25) return 1; if (r < 0.4) return 2; if (r < 0.55) return 3; if (r < 0.7) return 4; if (r < 0.85) return 5; return 6; }
             function render(n, depth) {
                 var wrap = document.createElement('div');
@@ -1200,8 +1254,9 @@
                 var hasCh = n.ch && n.ch.length > 0;
                 var toggle = document.createElement('span');
                 toggle.className = 'otree-toggle';
-                toggle.textContent = hasCh ? (n._expanded ? '▾' : '▸') : (n.t === 'd' ? '·' : '');
-                if (hasCh) { toggle.onclick = function(e) { e.stopPropagation(); n._expanded = !n._expanded; renderOwnershipTree(nodes, container); }; }
+                var expanded = !!_otExp[n.p];
+                toggle.textContent = hasCh ? (expanded ? '▾' : '▸') : (n.t === 'd' ? '·' : '');
+                if (hasCh) { toggle.onclick = function(e) { e.stopPropagation(); _otExp[n.p] = !_otExp[n.p]; container.innerHTML = ''; renderOwnershipTree(ownershipData, fileStatsData, container); }; }
                 row.appendChild(toggle);
                 var nm = document.createElement('span');
                 nm.className = 'otree-name ' + n.t;
@@ -1218,14 +1273,14 @@
                     var ln = document.createElement('span'); ln.className = 'otree-lines'; ln.textContent = n.l; row.appendChild(ln);
                 }
                 wrap.appendChild(row);
-                if (n._expanded && hasCh) {
+                if (expanded && hasCh) {
                     var chDiv = document.createElement('div'); chDiv.className = 'otree-children';
                     for (var i = 0; i < n.ch.length; i++) chDiv.appendChild(render(n.ch[i], depth + 1));
                     wrap.appendChild(chDiv);
                 }
                 return wrap;
             }
-            for (var i = 0; i < nodes.length; i++) container.appendChild(render(nodes[i], 0));
+            for (var i = 0; i < roots.length; i++) container.appendChild(render(roots[i], 0));
         }
 
         function renderWordFreq(wordFreq) {
@@ -1389,7 +1444,6 @@
 
         const fileStats = {{FILE_STATS}};
         const ownership = {{OWNERSHIP}};
-        const dirOwnership = {{DIR_OWNERSHIP}};
         const weeklyHourlyGrid = {{WEEKLY_HOURLY_GRID}};
         const weeklyHourlyMax = {{WEEKLY_HOURLY_MAX}};
         const wordFreq = {{WORD_FREQ}};
@@ -1401,7 +1455,7 @@
         renderCalendar(calendarData);
         renderFileStats(fileStats);
         renderHeatmap(weeklyHourlyGrid, weeklyHourlyMax);
-        renderOwnershipTree(dirOwnership, document.getElementById('ownershipTreeContainer'));
+        renderOwnershipTree(ownership, fileStats, document.getElementById('ownershipTreeContainer'));
         renderWordFreq(wordFreq);
 
         const developerSelect = document.getElementById('developerSelect');
