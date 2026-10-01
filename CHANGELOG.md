@@ -2,6 +2,23 @@
 
 All notable changes to the "Git Stats Visualizer" extension will be documented in this file.
 
+## [1.5.0] - 2026-10-01
+
+### Added
+- **Team Signals section** with three rules for spotting delivery risk:
+  - **Burnout / overtime** — share of each author's commits made between 22:00–05:59 (in the commit's own timezone) or on a weekend, ranked by off-hours share
+  - **Handover** — directories whose most active author stopped committing there and a different author took over afterwards (parallel work is not counted), reported with the switch date
+  - **Knowledge concentration** — per-directory owner share, single-owner directories, and the bus factor (authors needed to cover 80% of a directory's lines)
+- `src/teamSignals.ts`: dependency-free report builder with every threshold in `SIGNAL_THRESHOLDS`, covered by 16 unit tests
+- Team signals CSV export
+
+### Fixed
+- Health Check numbers now follow the selected time range: the cached health counters were not refreshed when the range changed, so the panel kept showing the previous range's report
+- Vendored dependencies (`node_modules/**`, `vendor/**`) are excluded from the analysis by default. A repository that once committed `node_modules/` had third-party code dominating the ownership, risk and concentration rankings
+
+### Notes
+- Per-directory author activity (commit count plus first/last commit date) is collected while parsing the git log and merged across repositories; a commit touching several files in one directory counts once
+
 ## [1.4.0] - 2026-10-01
 
 ### Added

@@ -7,6 +7,8 @@ import moment from 'moment';
 import { SimpleGit } from 'simple-git';
 import { escapeHtml, formatError, mergeResults, toSafeJson } from './mergeStats';
 import { HealthRaw, HealthReport, buildHealthReport } from './healthChecks';
+import { TeamSignalsReport, buildTeamSignals } from './teamSignals';
+import type { DirActivityMap } from './teamSignals';
 
 interface ChartData {
     labels: string[];
@@ -52,6 +54,7 @@ export class ContributionVisualization {
     private commitDetailsCache: { [date: string]: { t: string; a: string; m: string }[] } = {};
     private heatmapDetailsCache: { [dayHour: string]: { d: string; t: string; a: string; m: string }[] } = {};
     private healthCache: HealthRaw | undefined;
+    private dirActivityCache: DirActivityMap = {};
     private autoRangeActive: boolean = true;
     private selectedBranch: string = '--all';
     private branchList: string[] = [];
@@ -83,6 +86,18 @@ export class ContributionVisualization {
      */
     private getHealthReport(): HealthReport {
         return buildHealthReport(this.healthCache, this.fileStatsCache, this.globalCache);
+    }
+
+    /**
+     * Team risk signals (burnout / handover / knowledge concentration) for the
+     * currently cached dataset, computed on demand from the caches.
+     */
+    private getSignalsReport(): TeamSignalsReport {
+        return buildTeamSignals({
+            authorStats: this.globalCache,
+            ownership: this.ownershipCache,
+            dirActivity: this.dirActivityCache
+        });
     }
 
     private async updateVisualization(stats: { [author: string]: AuthorStats }) {
@@ -135,6 +150,7 @@ export class ContributionVisualization {
                 commitDetails: this.commitDetailsCache,
                 heatmapDetails: this.heatmapDetailsCache,
                 health: this.getHealthReport(),
+                signals: this.getSignalsReport(),
                 isAuto: this.autoRangeActive,
                 startDateVal: authors.length > 0 ? authors[0].startDate.format('YYYY-MM-DD') : '',
                 endDateVal: authors.length > 0 ? authors[0].endDate.format('YYYY-MM-DD') : ''
@@ -162,6 +178,10 @@ export class ContributionVisualization {
             this.wordFreqCache = result.wordFreq || {};
             this.commitDetailsCache = result.commitDetails || {};
             this.heatmapDetailsCache = result.heatmapDetails || {};
+            // Keep the derived reports in step with the new range: the health and
+            // team-signal payloads are built from these caches, not from `result`.
+            this.healthCache = result.health;
+            this.dirActivityCache = result.dirActivity || {};
 
             if (this.panel?.webview) {
                 const authors = Object.keys(this.globalCache).filter(a => !a.toLowerCase().includes('stash'));
@@ -213,6 +233,7 @@ export class ContributionVisualization {
         this.commitDetailsCache = result.commitDetails || {};
         this.heatmapDetailsCache = result.heatmapDetails || {};
         this.healthCache = result.health;
+        this.dirActivityCache = result.dirActivity || {};
 
         if (this.panel) {
             this.webview = this.panel.webview;
@@ -407,7 +428,8 @@ export class ContributionVisualization {
                 ['{{IS_AUTO}}', this.autoRangeActive ? 'true' : 'false'],
                 ['{{COMMIT_DETAILS}}', toSafeJson(result.commitDetails || {})],
                 ['{{HEATMAP_DETAILS}}', toSafeJson(result.heatmapDetails || {})],
-                ['{{HEALTH_REPORT}}', toSafeJson(this.getHealthReport())]
+                ['{{HEALTH_REPORT}}', toSafeJson(this.getHealthReport())],
+                ['{{TEAM_SIGNALS}}', toSafeJson(this.getSignalsReport())]
             ];
 
             for (const [pattern, value] of replacements) {

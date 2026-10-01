@@ -2,6 +2,7 @@ import { SimpleGit } from 'simple-git';
 import moment from 'moment';
 import { Segment, useDefault } from 'segmentit';
 import { HealthRaw, emptyHealthRaw, isDocFile, isFixSubject, isTestFile } from './healthChecks';
+import type { DirActivityMap } from './teamSignals';
 
 /**
  * Lazily initialized segmenter — building the dictionary is expensive, so it
@@ -65,14 +66,46 @@ export interface ContributionResult {
     heatmapDetails: { [dayHour: string]: { d: string; t: string; a: string; m: string }[] };
     /** Health-check counters; optional so older results/tests stay valid. */
     health?: HealthRaw;
+    /** Per-directory, per-author commit activity (handover detection). */
+    dirActivity?: DirActivityMap;
 }
 
 export interface GitAnalyzerConfig {
     excludePatterns: string[];
 }
 
+/**
+ * Paths that are never treated as project code. Generated protocol stubs are
+ * obvious, but vendored dependencies matter just as much: for a repository that
+ * once committed node_modules/, those files otherwise dominate every ownership,
+ * risk and knowledge-concentration ranking with third-party code.
+ *
+ * Patterns use the glob subset supported by `isGeneratedFile` (`**`, `*`).
+ */
+export const DEFAULT_EXCLUDE_PATTERNS: string[] = [
+    '**/*.pb.go',
+    '**/*.pb.js',
+    '**/*.pb.ts',
+    '**/*_pb2.py',
+    '**/*_pb3.py',
+    '**/generated/**',
+    '**/*.pb.cs',
+    'node_modules/**',
+    'vendor/**'
+];
+
 /** Separator emitted by the git log pretty format (%x00) between records. */
 const RECORD_SEP = '\u0000';
+
+/**
+ * Directory part of a repo-relative path (`/` when the file sits at the root).
+ * Shared by the ownership entries and the directory activity map so both agree
+ * on what "one directory" means.
+ */
+export function directoryOf(file: string): string {
+    const sep = file.includes('/') ? '/' : '\\';
+    return file.includes(sep) ? file.substring(0, file.lastIndexOf(sep)) : '/';
+}
 
 /** Max entries kept per day/hour key in the commit/heatmap detail maps. */
 export const MAX_DETAILS_PER_KEY = 50;
@@ -88,6 +121,8 @@ export interface ParsedGitLog {
     commitDetails: { [date: string]: { t: string; a: string; m: string }[] };
     heatmapDetails: { [dayHour: string]: { d: string; t: string; a: string; m: string }[] };
     health: HealthRaw;
+    /** First/last commit per directory and author, for handover detection. */
+    dirActivity: DirActivityMap;
 }
 
 const STOP_WORDS = new Set([
@@ -204,6 +239,9 @@ export function parseGitLog(rawOutput: string, includeFile: (file: string) => bo
     const fileFixCommits = new Map<string, number>();
     const fileSourceChanges = new Map<string, number>();
     const fileSourceChangesWithTest = new Map<string, number>();
+    // Directory x author activity for handover detection: commit count plus the
+    // first and last date the author touched that directory.
+    const dirActivity: DirActivityMap = {};
 
     const segmenter = getSegmenter();
 
@@ -228,6 +266,7 @@ export function parseGitLog(rawOutput: string, includeFile: (file: string) => bo
 
         const isFix = isFixSubject(subject);
         const commitFiles: string[] = [];
+        const commitDirs = new Set<string>();
         let commitTouchedTest = false;
 
         // %aI always carries the committer's UTC offset. parseZone keeps that
@@ -316,6 +355,7 @@ export function parseGitLog(rawOutput: string, includeFile: (file: string) => bo
             if (!includeFile(file)) continue;
 
             commitFiles.push(file);
+            commitDirs.add(directoryOf(file));
             if (isTestFile(file)) {
                 commitTouchedTest = true;
             }
@@ -346,6 +386,21 @@ export function parseGitLog(rawOutput: string, includeFile: (file: string) => bo
             stats[author].hourlyStats[hourKey].files++;
         }
 
+        // Directory activity for handover detection: counted once per commit per
+        // directory, so a commit touching three files in the same directory still
+        // counts as one commit for that directory.
+        for (const dir of commitDirs) {
+            const byAuthor = dirActivity[dir] || (dirActivity[dir] = {});
+            const entry = byAuthor[author] || (byAuthor[author] = { commits: 0, firstDate: dateKey, lastDate: dateKey });
+            entry.commits++;
+            if (dateKey < entry.firstDate) {
+                entry.firstDate = dateKey;
+            }
+            if (dateKey > entry.lastDate) {
+                entry.lastDate = dateKey;
+            }
+        }
+
         // Health-check bookkeeping for this commit. Test and documentation files
         // are excluded from the "risky file" and test-gap rankings.
         health.totalCommits++;
@@ -372,7 +427,7 @@ export function parseGitLog(rawOutput: string, includeFile: (file: string) => bo
     health.fileSourceChanges = Object.fromEntries(fileSourceChanges);
     health.fileSourceChangesWithTest = Object.fromEntries(fileSourceChangesWithTest);
 
-    return { stats, fileChanges, fileAuthorLines, wordFreq, commitDetails, heatmapDetails, health };
+    return { stats, fileChanges, fileAuthorLines, wordFreq, commitDetails, heatmapDetails, health, dirActivity };
 }
 
 export class GitContributionAnalyzer {
@@ -382,13 +437,7 @@ export class GitContributionAnalyzer {
         this.git = git;
         this.config = {
             excludePatterns: [
-                '**/*.pb.go',
-                '**/*.pb.js',
-                '**/*.pb.ts',
-                '**/*_pb2.py',
-                '**/*_pb3.py',
-                '**/generated/**',
-                '**/*.pb.cs',
+                ...DEFAULT_EXCLUDE_PATTERNS,
                 ...(config.excludePatterns || [])
             ]
         };
@@ -477,13 +526,13 @@ export class GitContributionAnalyzer {
             const rawOutput = await this.git.raw(rawArgs);
 
             if (!rawOutput || !rawOutput.trim()) {
-                return { authorStats: {}, fileStats: [], ownership: [], wordFreq: {}, commitDetails: {}, heatmapDetails: {}, health: emptyHealthRaw() };
+                return { authorStats: {}, fileStats: [], ownership: [], wordFreq: {}, commitDetails: {}, heatmapDetails: {}, health: emptyHealthRaw(), dirActivity: {} };
             }
 
             const parsed = parseGitLog(rawOutput, file => this.shouldIncludeFile(file));
 
             if (Object.keys(parsed.stats).length === 0) {
-                return { authorStats: {}, fileStats: [], ownership: [], wordFreq: {}, commitDetails: {}, heatmapDetails: {} };
+                return { authorStats: {}, fileStats: [], ownership: [], wordFreq: {}, commitDetails: {}, heatmapDetails: {}, dirActivity: {} };
             }
 
             // Auto-compute actual date range from commit data when days === 0 (Full History)
@@ -538,8 +587,7 @@ export class GitContributionAnalyzer {
                             primaryAuthor = author;
                         }
                     }
-                    const sep = file.includes('/') ? '/' : '\\';
-                    const dir = file.includes(sep) ? file.substring(0, file.lastIndexOf(sep)) : '/';
+                    const dir = directoryOf(file);
                     return {
                         path: file,
                         directory: dir,
@@ -566,7 +614,8 @@ export class GitContributionAnalyzer {
                 wordFreq,
                 commitDetails: parsed.commitDetails,
                 heatmapDetails: parsed.heatmapDetails,
-                health: parsed.health
+                health: parsed.health,
+                dirActivity: parsed.dirActivity
             };
         } catch (error) {
             console.error('Error analyzing git log:', error);

@@ -469,6 +469,58 @@
             </div>
             <div class="health-notes" id="healthNotes"></div>
         </div>
+        <div class="chart-container health-section">
+            <h2 class="chart-title">Team Signals
+                <span id="signalsBadge" class="health-badge"></span>
+                <button class="export-btn" data-export-csv="signals" title="Export team signals as CSV">CSV</button>
+            </h2>
+            <div class="health-summary" id="signalsSummary"></div>
+            <div class="health-grid">
+                <div class="health-card">
+                    <h3>Burnout / overtime (off-hours share)</h3>
+                    <table class="summary-table" id="signalsBurnoutTable">
+                        <thead>
+                            <tr>
+                                <th>Author</th>
+                                <th>Commits</th>
+                                <th>Night</th>
+                                <th>Weekend</th>
+                            </tr>
+                        </thead>
+                        <tbody id="signalsBurnoutBody"></tbody>
+                    </table>
+                </div>
+                <div class="health-card">
+                    <h3>Handover (directory changed hands)</h3>
+                    <table class="summary-table" id="signalsHandoverTable">
+                        <thead>
+                            <tr>
+                                <th>Directory</th>
+                                <th>From</th>
+                                <th>To</th>
+                                <th>Since</th>
+                            </tr>
+                        </thead>
+                        <tbody id="signalsHandoverBody"></tbody>
+                    </table>
+                </div>
+                <div class="health-card">
+                    <h3>Knowledge concentration (bus factor)</h3>
+                    <table class="summary-table" id="signalsConcentrationTable">
+                        <thead>
+                            <tr>
+                                <th>Directory</th>
+                                <th>Lines</th>
+                                <th>Owner</th>
+                                <th>Share &middot; bus</th>
+                            </tr>
+                        </thead>
+                        <tbody id="signalsConcentrationBody"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="health-notes" id="signalsNotes"></div>
+        </div>
         <div class="chart-container">
             <div class="pie-chart-container">
                 <canvas id="pieChart"></canvas>
@@ -1050,6 +1102,9 @@
 
                     if (message.health) {
                         renderHealth(message.health);
+                    }
+                    if (message.signals) {
+                        renderTeamSignals(message.signals);
                     }
 
                     if (message.commitDetails) {
@@ -1717,12 +1772,119 @@
             });
         }
 
+        // ---- Team signals (burnout / handover / knowledge concentration) ---
+        function renderTeamSignals(signals) {
+            const summaryEl = document.getElementById('signalsSummary');
+            const badgeEl = document.getElementById('signalsBadge');
+            const burnoutBody = document.getElementById('signalsBurnoutBody');
+            const handoverBody = document.getElementById('signalsHandoverBody');
+            const concentrationBody = document.getElementById('signalsConcentrationBody');
+            const notesEl = document.getElementById('signalsNotes');
+            if (!summaryEl || !burnoutBody || !handoverBody || !concentrationBody) return;
+
+            const report = signals || {};
+            const burnout = report.burnout || {};
+            const handover = report.handover || {};
+            const concentration = report.concentration || {};
+            const burnoutRows = burnout.authors || [];
+            const handoverRows = handover.rows || [];
+            const concentrationRows = concentration.rows || [];
+
+            const metrics = [
+                { label: 'Off-hours commits', value: healthPct(burnout.offHoursShare) },
+                { label: 'Night share (team)', value: healthPct(burnout.nightShare) },
+                { label: 'Weekend share (team)', value: healthPct(burnout.weekendShare) },
+                { label: 'Handovers detected', value: String(handover.detected || 0) },
+                { label: 'Single-owner dirs', value: String(concentration.singleOwnerDirectories || 0) },
+                { label: 'High-risk dirs', value: String(concentration.highRiskDirectories || 0) }
+            ];
+            summaryEl.innerHTML = metrics.map(function(m) {
+                return '<div class="health-metric"><div class="value">' + escapeHtml(m.value) + '</div>'
+                    + '<div class="label">' + escapeHtml(m.label) + '</div></div>';
+            }).join('');
+
+            if (badgeEl) {
+                const highCount = burnoutRows.filter(function(r) { return r.severity === 'high'; }).length
+                    + handoverRows.filter(function(r) { return r.severity === 'high'; }).length
+                    + concentrationRows.filter(function(r) { return r.severity === 'high'; }).length;
+                const total = burnoutRows.length + handoverRows.length + concentrationRows.length;
+                badgeEl.className = 'health-badge ' + (highCount > 0 ? 'sev-high' : (total > 0 ? 'sev-medium' : 'sev-low'));
+                badgeEl.textContent = highCount > 0
+                    ? highCount + ' high severity'
+                    : (total > 0 ? 'watch list' : 'no findings');
+            }
+
+            burnoutBody.innerHTML = burnoutRows.length === 0
+                ? '<tr><td colspan="4" class="health-empty">No author passed the burnout threshold.</td></tr>'
+                : burnoutRows.map(function(r) {
+                    return '<tr><td title="' + escapeHtml(r.author) + '">' + escapeHtml(r.author) + '</td>'
+                        + '<td>' + (r.commits || 0) + '</td>'
+                        + '<td>' + healthPct(r.nightShare) + ' ' + healthSeverityBadge(r.severity) + '</td>'
+                        + '<td>' + healthPct(r.weekendShare) + '</td></tr>';
+                }).join('');
+
+            handoverBody.innerHTML = handoverRows.length === 0
+                ? '<tr><td colspan="4" class="health-empty">No clean directory handover detected.</td></tr>'
+                : handoverRows.map(function(r) {
+                    return '<tr><td title="' + escapeHtml(r.directory) + '">' + escapeHtml(r.directory) + '</td>'
+                        + '<td title="last commit ' + escapeHtml(r.fromLastCommit || '') + '">' + escapeHtml(r.from || '') + ' ' + healthSeverityBadge(r.severity) + '</td>'
+                        + '<td>' + escapeHtml(r.to || '') + '</td>'
+                        + '<td>' + escapeHtml(r.toFirstCommit || '') + '</td></tr>';
+                }).join('');
+
+            concentrationBody.innerHTML = concentrationRows.length === 0
+                ? '<tr><td colspan="4" class="health-empty">No directory crossed the concentration threshold.</td></tr>'
+                : concentrationRows.map(function(r) {
+                    return '<tr><td title="' + escapeHtml(r.directory) + '">' + escapeHtml(r.directory) + '</td>'
+                        + '<td>' + (r.totalLines || 0) + '</td>'
+                        + '<td>' + escapeHtml(r.topAuthor || '') + ' <span style="opacity:.6">(' + (r.authors || 0) + ')</span></td>'
+                        + '<td>' + healthPct(r.topShare) + ' &middot; ' + (r.busFactor || 0) + ' ' + healthSeverityBadge(r.severity) + '</td></tr>';
+                }).join('');
+
+            if (notesEl) {
+                notesEl.innerHTML = (report.notes || []).map(function(note) {
+                    return '<div>· ' + escapeHtml(note) + '</div>';
+                }).join('');
+            }
+        }
+
+        function exportSignalsCSV() {
+            const report = signalsReport || {};
+            const burnout = report.burnout || {};
+            const lines = ['section,item,value'];
+            lines.push('summary,offHoursShare,' + (burnout.offHoursShare || 0));
+            lines.push('summary,nightShare,' + (burnout.nightShare || 0));
+            lines.push('summary,weekendShare,' + (burnout.weekendShare || 0));
+            (burnout.authors || []).forEach(function(r) {
+                lines.push('burnout,"' + String(r.author || '').replace(/"/g, '""') + '",night=' + (r.nightShare || 0)
+                    + ';weekend=' + (r.weekendShare || 0) + ';commits=' + (r.commits || 0)
+                    + ';severity=' + (r.severity || ''));
+            });
+            ((report.handover || {}).rows || []).forEach(function(r) {
+                lines.push('handover,"' + String(r.directory || '').replace(/"/g, '""') + '",from=' + (r.from || '')
+                    + ';to=' + (r.to || '') + ';since=' + (r.toFirstCommit || '')
+                    + ';lastFrom=' + (r.fromLastCommit || '') + ';severity=' + (r.severity || ''));
+            });
+            ((report.concentration || {}).rows || []).forEach(function(r) {
+                lines.push('concentration,"' + String(r.directory || '').replace(/"/g, '""') + '",lines=' + (r.totalLines || 0)
+                    + ';owner=' + (r.topAuthor || '') + ';share=' + (r.topShare || 0)
+                    + ';authorCount=' + (r.authors || 0) + ';busFactor=' + (r.busFactor || 0)
+                    + ';severity=' + (r.severity || ''));
+            });
+            vscode.postMessage({
+                command: 'exportCsv',
+                csvContent: lines.join('\n'),
+                defaultFilename: 'git-stats-team-signals.csv'
+            });
+        }
+
         const fileStats = {{FILE_STATS}};
         const ownership = {{OWNERSHIP}};
         const weeklyHourlyGrid = {{WEEKLY_HOURLY_GRID}};
         const weeklyHourlyMax = {{WEEKLY_HOURLY_MAX}};
         const wordFreq = {{WORD_FREQ}};
         const healthReport = {{HEALTH_REPORT}};
+        const signalsReport = {{TEAM_SIGNALS}};
         var commitDetails = {{COMMIT_DETAILS}};
         var heatmapDetails = {{HEATMAP_DETAILS}};
         addChartClick(commitChart, commitDetails);
@@ -1734,6 +1896,7 @@
         renderOwnershipTree(ownership, fileStats, document.getElementById('ownershipTreeContainer'));
         renderWordFreq(wordFreq);
         renderHealth(healthReport);
+        renderTeamSignals(signalsReport);
 
         const developerSelect = document.getElementById('developerSelect');
         developerSelect.addEventListener('change', function(e) {
@@ -1755,6 +1918,8 @@
                     exportSummaryCSV();
                 } else if (btn.dataset.exportCsv === 'health') {
                     exportHealthCSV();
+                } else if (btn.dataset.exportCsv === 'signals') {
+                    exportSignalsCSV();
                 } else {
                     exportFileStatsCSV();
                 }

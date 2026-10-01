@@ -28,6 +28,12 @@ Click the Git Stats icon in VS Code status bar to open the statistics interface.
 - Bot account detection (dependabot, renovate, CI users) and `.mailmap`-aware author identity
 - Health report CSV export
 
+### Team Signals
+- **Burnout / overtime**: off-hours share per author (22:00–05:59 in the commit's own timezone, or a weekend)
+- **Handover**: directories where the de-facto owner stopped committing and someone else took over, with the switch date
+- **Knowledge concentration**: per-directory owner share, single-owner directories and the bus factor
+- Team signals CSV export
+
 ### Multi-repo & Filtering
 - Multi-repo workspace support with repo and branch dropdown selectors
 - Cross-repo statistics merging
@@ -38,7 +44,7 @@ Click the Git Stats icon in VS Code status bar to open the statistics interface.
   - Custom date picker
 
 ### Export
-- CSV export for summary, file stats and health report tables
+- CSV export for summary, file stats, health report and team signals tables
 - PNG export for any chart
 
 ## Installation

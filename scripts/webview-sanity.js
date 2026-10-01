@@ -70,6 +70,36 @@ const replacements = [
         testGapFiles: [{ file: 'src/a.ts', changes: 6, withTest: 1, testRatio: 0.17, severity: 'high' }],
         bots: [{ author: 'dependabot[bot]', email: 'bot@github.com', commits: 2 }],
         notes: ['作者身份按 .mailmap 解析（git log --use-mailmap），别名与旧邮箱会合并为同一人。']
+    })],
+    ['{{TEAM_SIGNALS}}', JSON.stringify({
+        burnout: {
+            authorsAnalysed: 2,
+            nightShare: 0.2,
+            weekendShare: 0.1,
+            offHoursShare: 0.25,
+            authors: [{
+                author: 'alice', commits: 40, nightCommits: 12, nightShare: 0.3,
+                weekendCommits: 8, weekendShare: 0.2, offHoursShare: 0.4, severity: 'high'
+            }]
+        },
+        handover: {
+            directoriesAnalysed: 3,
+            detected: 1,
+            rows: [{
+                directory: 'src/legacy', from: 'bob', fromLastCommit: '2025-11-02', to: 'alice',
+                toFirstCommit: '2026-01-14', fromCommits: 18, toCommits: 6, directoryCommits: 26, severity: 'high'
+            }]
+        },
+        concentration: {
+            directoriesAnalysed: 5,
+            singleOwnerDirectories: 2,
+            highRiskDirectories: 3,
+            rows: [{
+                directory: 'src/core', totalLines: 2400, authors: 2, topAuthor: 'alice',
+                topShare: 0.86, busFactor: 1, severity: 'high'
+            }]
+        },
+        notes: ['夜间按提交自身时区的 22:00–05:59 计，周末按周六周日计。']
     })]
 ];
 for (const [pattern, value] of replacements) {

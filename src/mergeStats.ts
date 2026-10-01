@@ -8,6 +8,7 @@ import {
     computeStreakStats
 } from './gitAnalyzer';
 import { emptyHealthRaw, mergeHealthRaw } from './healthChecks';
+import type { DirActivityMap } from './teamSignals';
 
 /** Max entries kept per day/hour key in commit/heatmap detail maps (payload bounding). */
 export const MAX_DETAILS_PER_KEY = 50;
@@ -52,7 +53,41 @@ export function formatError(error: unknown): string {
 }
 
 function emptyResult(): ContributionResult {
-    return { authorStats: {}, fileStats: [], ownership: [], wordFreq: {}, commitDetails: {}, heatmapDetails: {}, health: emptyHealthRaw() };
+    return { authorStats: {}, fileStats: [], ownership: [], wordFreq: {}, commitDetails: {}, heatmapDetails: {}, health: emptyHealthRaw(), dirActivity: {} };
+}
+
+/**
+ * Merge per-directory author activity: commit counts add up, first/last dates
+ * widen across repos (ISO date strings compare correctly as strings).
+ */
+function mergeDirActivity(target: DirActivityMap, source: DirActivityMap | undefined): void {
+    if (!source) {
+        return;
+    }
+    for (const [dir, byAuthor] of Object.entries(source)) {
+        const targetByAuthor = target[dir] || (target[dir] = {});
+        for (const [author, activity] of Object.entries(byAuthor || {})) {
+            if (!activity) {
+                continue;
+            }
+            const existing = targetByAuthor[author];
+            if (!existing) {
+                targetByAuthor[author] = {
+                    commits: activity.commits || 0,
+                    firstDate: activity.firstDate || '',
+                    lastDate: activity.lastDate || ''
+                };
+                continue;
+            }
+            existing.commits += activity.commits || 0;
+            if (activity.firstDate && (!existing.firstDate || activity.firstDate < existing.firstDate)) {
+                existing.firstDate = activity.firstDate;
+            }
+            if (activity.lastDate && activity.lastDate > existing.lastDate) {
+                existing.lastDate = activity.lastDate;
+            }
+        }
+    }
 }
 
 function mergeDailyStats(target: { [date: string]: DailyStats }, source: { [date: string]: DailyStats }): void {
@@ -96,6 +131,7 @@ export function mergeResults(results: ContributionResult[]): ContributionResult 
     const commitDetails: ContributionResult['commitDetails'] = {};
     const heatmapDetails: ContributionResult['heatmapDetails'] = {};
     const health = emptyHealthRaw();
+    const dirActivity: DirActivityMap = {};
 
     const pushDetails = <T>(target: { [key: string]: T[] }, source: { [key: string]: T[] }) => {
         for (const [key, entries] of Object.entries(source)) {
@@ -190,6 +226,7 @@ export function mergeResults(results: ContributionResult[]): ContributionResult 
         pushDetails(commitDetails, result.commitDetails || {});
         pushDetails(heatmapDetails, result.heatmapDetails || {});
         mergeHealthRaw(health, result.health);
+        mergeDirActivity(dirActivity, result.dirActivity);
     }
 
     // Finalize authors: widened ranges + streaks recomputed over the merged data.
@@ -240,6 +277,7 @@ export function mergeResults(results: ContributionResult[]): ContributionResult 
         wordFreq: mergedWordFreq,
         commitDetails,
         heatmapDetails,
-        health
+        health,
+        dirActivity
     };
 }

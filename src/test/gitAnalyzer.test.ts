@@ -1,16 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import moment from 'moment';
-import { computeStreakStats, isGeneratedFile, parseGitLog } from '../gitAnalyzer';
+import { DEFAULT_EXCLUDE_PATTERNS, computeStreakStats, isGeneratedFile, parseGitLog } from '../gitAnalyzer';
 
-const DEFAULT_PATTERNS = [
-    '**/*.pb.go',
-    '**/*.pb.js',
-    '**/*.pb.ts',
-    '**/*_pb2.py',
-    '**/*_pb3.py',
-    '**/generated/**',
-    '**/*.pb.cs'
-];
+const DEFAULT_PATTERNS = DEFAULT_EXCLUDE_PATTERNS;
 
 describe('isGeneratedFile', () => {
     it('flags files inside a Protos/ directory (forward slashes)', () => {
@@ -34,6 +26,14 @@ describe('isGeneratedFile', () => {
     it('keeps ordinary source files', () => {
         expect(isGeneratedFile('src/x.ts', DEFAULT_PATTERNS)).toBe(false);
         expect(isGeneratedFile('README.md', DEFAULT_PATTERNS)).toBe(false);
+    });
+
+    it('excludes vendored dependencies at any depth', () => {
+        expect(isGeneratedFile('node_modules/eslint/lib/rules/index.js', DEFAULT_PATTERNS)).toBe(true);
+        expect(isGeneratedFile('packages/app/node_modules/x/index.js', DEFAULT_PATTERNS)).toBe(true);
+        expect(isGeneratedFile('vendor/github.com/pkg/errors/errors.go', DEFAULT_PATTERNS)).toBe(true);
+        // Not a vendored directory, just a similarly named one.
+        expect(isGeneratedFile('src/node_modules_docs/a.ts', DEFAULT_PATTERNS)).toBe(false);
     });
 });
 
@@ -145,5 +145,50 @@ describe('parseGitLog', () => {
         const empty = parseGitLog('', () => true);
         expect(Object.keys(empty.stats)).toHaveLength(0);
         expect(empty.fileChanges.size).toBe(0);
+    });
+
+    it('records per-directory author activity for included files only', () => {
+        expect(parsed.dirActivity['src']!['Alice']).toEqual({
+            commits: 1,
+            firstDate: '2024-01-02',
+            lastDate: '2024-01-02'
+        });
+        // binary.bin sits at the repo root → the '/' directory bucket.
+        expect(parsed.dirActivity['/']!['Alice']!.commits).toBe(1);
+        // Bob's only file is filtered out by includeFile.
+        expect(parsed.dirActivity['src']!['Bob']).toBeUndefined();
+    });
+
+    it('counts a directory once per commit however many files it touched', () => {
+        const raw = [
+            '\u0000c1',
+            'Alice',
+            'alice@x.com',
+            '2024-02-01T09:00:00+08:00',
+            'work',
+            '1\t0\tsrc/a.ts',
+            '1\t0\tsrc/b.ts',
+            '1\t0\troot.ts',
+            '\u0000c2',
+            'Bob',
+            'b@x.com',
+            '2024-03-01T09:00:00+08:00',
+            'work',
+            '1\t0\tsrc/c.ts',
+            ''
+        ].join('\n');
+        const log = parseGitLog(raw, () => true);
+
+        expect(log.dirActivity['src']!['Alice']).toEqual({
+            commits: 1,
+            firstDate: '2024-02-01',
+            lastDate: '2024-02-01'
+        });
+        expect(log.dirActivity['src']!['Bob']).toEqual({
+            commits: 1,
+            firstDate: '2024-03-01',
+            lastDate: '2024-03-01'
+        });
+        expect(log.dirActivity['/']!['Alice']!.commits).toBe(1);
     });
 });
