@@ -22,6 +22,17 @@ node_modules/>
 !node_modules/ms/index.js
 !node_modules/ms/package.json
 
+# Bundled by webpack into dist/extension.js.
+# NOTE: vsce always ships every package listed in "dependencies" and ignores
+# node_modules rules here, so these must be devDependencies rather than ignored.
+# (segmentit is bundled; chart.js is read at runtime from node_modules and
+# therefore stays in dependencies.)
+
+# Local tooling / build leftovers
+.kilo/
+vsix-package/
+*.vsix
+
 # Development files
 .editorconfig
 .eslintignore

@@ -64,13 +64,12 @@
     "package": "webpack --mode production --devtool hidden-source-map"
   },
   "dependencies": {
-    "@types/chart.js": "^2.9.41",
     "chart.js": "^4.4.8",
     "moment": "^2.29.4",
-    "segmentit": "^2.0.3",
     "simple-git": "^3.20.0"
   },
   "devDependencies": {
+    "@types/chart.js": "^2.9.41",
     "@types/d3": "^7.4.3",
     "@types/d3-array": "^3.2.1",
     "@types/d3-axis": "^3.0.6",
@@ -107,6 +106,7 @@
     "@types/node": "^16.11.7",
     "@types/sizzle": "^2.3.9",
     "@types/vscode": "^1.60.0",
+    "segmentit": "^2.0.3",
     "terser-webpack-plugin": "^5.3.10",
     "ts-loader": "^9.5.1",
     "typescript": "^5.2.2",
