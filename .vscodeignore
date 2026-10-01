@@ -1,21 +1,22 @@
 .vscode/**
 .vscode-test/**
 src/**
+out/**
+scripts/**
 .gitignore
 .yarnrc
 **/tsconfig.json
 **/.eslintrc.json
 **/*.map
 **/*.ts
-.github/>
-.git/>
+.github/**
+.git/**
 node_modules/>
 !node_modules/@kwsites/file-exists/>
 !node_modules/@kwsites/promise-deferred/>
 !node_modules/simple-git/dist/>
 !node_modules/simple-git/package.json
 !node_modules/moment/moment.js
-!node_modules/moment/locale/>
 !node_modules/moment/package.json
 !node_modules/debug/src/>
 !node_modules/debug/package.json
@@ -32,6 +33,9 @@ node_modules/>
 .kilo/
 vsix-package/
 *.vsix
+eslint.config.mjs
+vitest.config.*
+coverage/
 
 # Development files
 .editorconfig
@@ -48,4 +52,4 @@ docs/>
 **/*.md
 !README.md
 !README_CN.md
-!changelog.md
+!CHANGELOG.md

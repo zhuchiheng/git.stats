@@ -1,6 +1,5 @@
 {
   "compilerOptions": {
-    "esModuleInterop": true,
     "module": "commonjs",
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
@@ -9,7 +8,6 @@
     "outDir": "out",
     "rootDir": "src",
     "strict": true,
-    "esModuleInterop": true,
     "skipLibCheck": true
   },
   "exclude": [

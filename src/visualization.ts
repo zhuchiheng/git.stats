@@ -1,9 +1,11 @@
 import * as vscode from 'vscode';
+import * as crypto from 'crypto';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import { AuthorStats, GitContributionAnalyzer, ContributionResult, FileChangeStats, OwnershipEntry } from './gitAnalyzer';
 import moment from 'moment';
 import { SimpleGit } from 'simple-git';
+import { escapeHtml, formatError, mergeResults, toSafeJson } from './mergeStats';
 
 interface ChartData {
     labels: string[];
@@ -40,8 +42,7 @@ export class ContributionVisualization {
     private disposables: vscode.Disposable[] = [];
     private webview: vscode.Webview | undefined;
     private gitRepos: {path: string, git: SimpleGit}[] = [];
-    private currentRepoIndex: number = 0;
-    private analyzer: GitContributionAnalyzer;
+    private currentRepoIndex: number | 'all' = 'all';
     private globalCache: { [author: string]: AuthorStats } = {};
     private selectedDeveloper: string = 'all';
     private fileStatsCache: FileChangeStats[] = [];
@@ -59,65 +60,18 @@ export class ContributionVisualization {
     constructor(
         private context: vscode.ExtensionContext,
         private analyzers: GitContributionAnalyzer[],
-        gitRepos: {path: string, git: SimpleGit}[]
+        gitRepos: {path: string, git: SimpleGit}[],
+        initialBranch: string = '--all',
+        branchList: string[] = []
     ) {
         this.gitRepos = gitRepos;
-        this.analyzer = analyzers[0];
+        this.selectedBranch = initialBranch;
+        this.branchList = branchList;
     }
 
     public dispose() {
         this.panel?.dispose();
         this.disposables.forEach(d => d.dispose());
-    }
-
-    public async update(stats: { [author: string]: AuthorStats }) {
-        if (!this.panel) {
-            return;
-        }
-        await this.updateVisualization(stats);
-    }
-
-    public async updateStats(stats: { [author: string]: AuthorStats }) {
-        if (!this.panel) {
-            return;
-        }
-
-        const authors = Object.values(stats);
-        const dates = this.getAllDates(stats);
-        const hours = this.getHoursArray();
-
-        const commitData = this.prepareCommitData(authors, dates);
-        const changeData = this.prepareChangeData(authors, dates);
-        const hourlyCommitData = this.prepareHourlyCommitData(authors, hours);
-        const hourlyChangeData = this.prepareHourlyChangeData(authors, hours);
-
-        const weeklyHourlyData = this.prepareWeeklyHourlyData(authors);
-        const weeklyHourlyGrid = weeklyHourlyData.grid;
-        const weeklyHourlyMax = weeklyHourlyData.max;
-        const fc: { [key: string]: number } = {};
-        for (const f of this.fileStatsCache) fc[f.file] = f.totalCommits;
-        const dirOwnership = this.prepareOwnershipTree(this.ownershipCache, fc);
-
-        if (this.panel?.webview) {
-            this.panel.webview.postMessage({
-                command: 'updateData',
-                commitData,
-                changeData,
-                hourlyCommitData,
-                hourlyChangeData,
-                fileStats: this.fileStatsCache,
-                ownership: this.ownershipCache,
-                dirOwnership,
-                weeklyHourlyGrid,
-                weeklyHourlyMax,
-                wordFreq: this.wordFreqCache,
-                commitDetails: this.commitDetailsCache,
-                heatmapDetails: this.heatmapDetailsCache,
-                isAuto: this.autoRangeActive,
-                startDateVal: authors.length > 0 ? authors[0].startDate.format('YYYY-MM-DD') : '',
-                endDateVal: authors.length > 0 ? authors[0].endDate.format('YYYY-MM-DD') : ''
-            });
-        }
     }
 
     private async updateVisualization(stats: { [author: string]: AuthorStats }) {
@@ -148,8 +102,8 @@ export class ContributionVisualization {
             currentStreak: author.currentStreak || 0,
             longestStreak: author.longestStreak || 0
         }));
-        var fc2: { [key: string]: number } = {};
-        for (var _i = 0; _i < this.fileStatsCache.length; _i++) { fc2[this.fileStatsCache[_i].file] = this.fileStatsCache[_i].totalCommits; }
+        const fc2: { [key: string]: number } = {};
+        for (let _i = 0; _i < this.fileStatsCache.length; _i++) { fc2[this.fileStatsCache[_i].file] = this.fileStatsCache[_i].totalCommits; }
         const dirOwnership = this.prepareOwnershipTree(this.ownershipCache, fc2);
 
         if (this.panel) {
@@ -182,9 +136,14 @@ export class ContributionVisualization {
             this.lastRangeDays = days;
             this.lastRangeStart = startDate;
             this.lastRangeEnd = endDate;
-            this.analyzer = this.analyzers[this.currentRepoIndex];
 
-            const result = await this.analyzer.getContributionStats(days, startDate, endDate, undefined, undefined, this.selectedBranch);
+            const results = this.currentRepoIndex === 'all'
+                ? await Promise.all(this.analyzers.map(analyzer =>
+                    analyzer.getContributionStats(days, startDate, endDate, undefined, this.selectedBranch)
+                ))
+                : [await this.analyzers[this.currentRepoIndex].getContributionStats(days, startDate, endDate, undefined, this.selectedBranch)];
+            const result = mergeResults(results);
+
             this.globalCache = result.authorStats;
             this.fileStatsCache = result.fileStats;
             this.ownershipCache = result.ownership;
@@ -203,13 +162,16 @@ export class ContributionVisualization {
             await this.applyDeveloperFilter(this.selectedDeveloper);
         } catch (error) {
             console.error('Error updating time range:', error);
+            vscode.window.showErrorMessage('Git Stats: failed to update time range — ' + formatError(error));
         }
     }
 
     private async loadBranches() {
         try {
-            const repoPath = this.gitRepos[this.currentRepoIndex]?.path;
-            const branches = await this.analyzers[this.currentRepoIndex].getBranches(repoPath);
+            const analyzer = this.currentRepoIndex === 'all'
+                ? this.analyzers[0]
+                : this.analyzers[this.currentRepoIndex];
+            const branches = await analyzer.getBranches();
             this.branchList = branches;
             const hasMain = branches.includes('main');
             this.selectedBranch = hasMain ? 'main' : '--all';
@@ -225,7 +187,7 @@ export class ContributionVisualization {
                 ? { [developer]: this.globalCache[developer] }
                 : this.globalCache;
 
-            await this.update(filteredStats);
+            await this.updateVisualization(filteredStats);
         } catch (error) {
             console.error('Error applying developer filter:', error);
         }
@@ -235,11 +197,11 @@ export class ContributionVisualization {
         this.globalCache = result.authorStats;
         this.fileStatsCache = result.fileStats;
         this.ownershipCache = result.ownership;
-            this.wordFreqCache = result.wordFreq || {};
-            this.commitDetailsCache = result.commitDetails || {};
-            this.heatmapDetailsCache = result.heatmapDetails || {};
+        this.wordFreqCache = result.wordFreq || {};
+        this.commitDetailsCache = result.commitDetails || {};
+        this.heatmapDetailsCache = result.heatmapDetails || {};
 
-            if (this.panel) {
+        if (this.panel) {
             this.webview = this.panel.webview;
             this.panel.reveal();
 
@@ -247,6 +209,11 @@ export class ContributionVisualization {
             this.panel.webview.postMessage({
                 command: 'updateDevelopers',
                 developers: authors
+            });
+            this.panel.webview.postMessage({
+                command: 'updateBranches',
+                branches: this.branchList,
+                defaultBranch: this.selectedBranch
             });
         } else {
             this.panel = vscode.window.createWebviewPanel(
@@ -280,12 +247,25 @@ export class ContributionVisualization {
                                 message.developer
                             );
                             break;
-                        case 'repoChanged':
-                            this.currentRepoIndex = message.repoIndex;
+                        case 'repoChanged': {
+                            const repoKey = String(message.repoIndex);
+                            this.currentRepoIndex = repoKey === 'all' ? 'all' : parseInt(repoKey, 10);
                             this.selectedBranch = '--all';
-                            await this.loadBranches();
+                            if (this.currentRepoIndex !== 'all') {
+                                await this.loadBranches();
+                            } else {
+                                this.branchList = [];
+                                if (this.panel?.webview) {
+                                    this.panel.webview.postMessage({
+                                        command: 'updateBranches',
+                                        branches: [],
+                                        defaultBranch: '--all'
+                                    });
+                                }
+                            }
                             await this.handleTimeRangeChange(this.lastRangeDays, this.lastRangeStart, this.lastRangeEnd);
                             break;
+                        }
                         case 'branchChanged':
                             this.selectedBranch = message.branch;
                             await this.handleTimeRangeChange(this.lastRangeDays, this.lastRangeStart, this.lastRangeEnd);
@@ -313,10 +293,6 @@ export class ContributionVisualization {
 
         if (this.panel) {
             this.panel.webview.html = await this.getWebviewContent(result, commitData, changeData, hourlyCommitData, hourlyChangeData);
-        }
-        await this.loadBranches();
-        if (this.selectedBranch !== '--all') {
-            await this.handleTimeRangeChange(this.lastRangeDays, this.lastRangeStart, this.lastRangeEnd);
         }
     }
 
@@ -353,58 +329,84 @@ export class ContributionVisualization {
             const htmlPath = path.join(this.context.extensionPath, 'resources', 'visualization.html');
             let htmlContent = await fs.readFile(htmlPath, 'utf-8');
 
+            const nonce = crypto.randomBytes(16).toString('hex');
+            const cspSource = this.webview!.cspSource;
             const chartJsUri = this.webview!.asWebviewUri(
                 vscode.Uri.joinPath(this.context!.extensionUri, 'node_modules', 'chart.js', 'dist', 'chart.umd.js')
             );
 
-            const repoOptions = this.gitRepos.map((repo, index) =>
-                `<option value="${index}">${path.basename(repo.path)}</option>`
+            const repoOptions = '<option value="all">All repositories</option>' + this.gitRepos.map((repo, index) =>
+                `<option value="${index}">${escapeHtml(path.basename(repo.path))}</option>`
             ).join('');
 
+            const branchOptions = [
+                `<option value="--all"${this.selectedBranch === '--all' ? ' selected' : ''}>All branches</option>`,
+                ...this.branchList.map(b =>
+                    `<option value="${escapeHtml(b)}"${b === this.selectedBranch ? ' selected' : ''}>${escapeHtml(b)}</option>`
+                )
+            ].join('');
+
             const authorOptions = authors.map(author =>
-                `<option value="${author.author}">${author.author}</option>`
+                `<option value="${escapeHtml(author.author)}">${escapeHtml(author.author)}</option>`
             ).join('');
 
             const authorRows = authors.map(author => {
                 const cur = author.currentStreak || 0;
                 const longest = author.longestStreak || 0;
+                const curBadge = cur > 1
+                    ? '<span class="streak-badge ' + (cur >= 7 ? 'streak-hot' : cur >= 3 ? 'streak-warm' : 'streak-cold') + '">' + cur + ' days</span>'
+                    : (cur === 1 ? '1 day' : '-');
+                const longestBadge = longest > 1
+                    ? '<span class="streak-badge streak-cold">' + longest + ' days</span>'
+                    : (longest === 1 ? '1 day' : '-');
                 return `
                 <tr>
-                    <td>${author.author}</td>
+                    <td>${escapeHtml(author.author)}</td>
                     <td>${author.totalCommits}</td>
                     <td>${author.totalInsertions}</td>
                     <td>${author.totalDeletions}</td>
                     <td>${author.totalFiles}</td>
-                    <td>${cur > 1 ? '<span class="streak-badge ' + (cur >= 7 ? 'streak-hot' : cur >= 3 ? 'streak-warm' : 'streak-cold') + '">' + cur + ' days</span>' : (cur === 1 ? '1 day' : '-')}</td>
-                    <td>${longest > 1 ? '<span class="streak-badge streak-cold">' + longest + ' days</span>' : (longest === 1 ? '1 day' : '-')}</td>
+                    <td>${curBadge}</td>
+                    <td>${longestBadge}</td>
                 </tr>`;
             }).join('');
 
-            htmlContent = htmlContent
-                .replace('{{CHART_JS_URI}}', chartJsUri.toString())
-                .replace('{{REPO_OPTIONS}}', repoOptions)
-                .replace('{{AUTHOR_OPTIONS}}', authorOptions)
-                .replace('{{COMMIT_DATA}}', JSON.stringify(commitData))
-                .replace('{{CHANGE_DATA}}', JSON.stringify(changeData))
-                .replace('{{HOURLY_COMMIT_DATA}}', JSON.stringify(hourlyCommitData))
-                .replace('{{HOURLY_CHANGE_DATA}}', JSON.stringify(hourlyChangeData))
-                .replace('{{START_DATE}}', startDate)
-                .replace('{{END_DATE}}', endDate)
-                .replace('{{AUTHOR_ROWS}}', authorRows)
-                .replace('{{CALENDAR_DATA}}', JSON.stringify(calendarData))
-                .replace('{{FILE_STATS}}', JSON.stringify(result.fileStats.slice(0, 100)))
-                .replace('{{OWNERSHIP}}', JSON.stringify(result.ownership.slice(0, 100)))
-                .replace('{{WEEKLY_HOURLY_GRID}}', JSON.stringify(weeklyHourlyGrid))
-                .replace('{{WEEKLY_HOURLY_MAX}}', String(weeklyHourlyMax))
-                .replace('{{WORD_FREQ}}', JSON.stringify(result.wordFreq || {}))
-                .replace('{{IS_AUTO}}', this.autoRangeActive ? 'true' : 'false')
-                .replace('{{COMMIT_DETAILS}}', JSON.stringify(result.commitDetails || {}))
-                .replace('{{HEATMAP_DETAILS}}', JSON.stringify(result.heatmapDetails || {}));
+            const replacements: [string | RegExp, string][] = [
+                [/\{\{NONCE\}\}/g, nonce],
+                [/\{\{CSP_SOURCE\}\}/g, cspSource],
+                ['{{CHART_JS_URI}}', chartJsUri.toString()],
+                ['{{REPO_OPTIONS}}', repoOptions],
+                ['{{BRANCH_OPTIONS}}', branchOptions],
+                ['{{AUTHOR_OPTIONS}}', authorOptions],
+                ['{{COMMIT_DATA}}', toSafeJson(commitData)],
+                ['{{CHANGE_DATA}}', toSafeJson(changeData)],
+                ['{{HOURLY_COMMIT_DATA}}', toSafeJson(hourlyCommitData)],
+                ['{{HOURLY_CHANGE_DATA}}', toSafeJson(hourlyChangeData)],
+                [/\{\{START_DATE\}\}/g, startDate],
+                [/\{\{END_DATE\}\}/g, endDate],
+                ['{{AUTHOR_ROWS}}', authorRows],
+                ['{{CALENDAR_DATA}}', toSafeJson(calendarData)],
+                ['{{FILE_STATS}}', toSafeJson(result.fileStats.slice(0, 100))],
+                ['{{OWNERSHIP}}', toSafeJson(result.ownership.slice(0, 100))],
+                ['{{WEEKLY_HOURLY_GRID}}', toSafeJson(weeklyHourlyGrid)],
+                ['{{WEEKLY_HOURLY_MAX}}', String(weeklyHourlyMax)],
+                ['{{WORD_FREQ}}', toSafeJson(result.wordFreq || {})],
+                ['{{IS_AUTO}}', this.autoRangeActive ? 'true' : 'false'],
+                ['{{COMMIT_DETAILS}}', toSafeJson(result.commitDetails || {})],
+                ['{{HEATMAP_DETAILS}}', toSafeJson(result.heatmapDetails || {})]
+            ];
+
+            for (const [pattern, value] of replacements) {
+                // Function-form replacement: a literal value can never be
+                // mangled by special `$` sequences in the substituted text.
+                htmlContent = htmlContent.replace(pattern, () => value);
+            }
 
             return htmlContent;
         } catch (error) {
             console.error('Error loading visualization template:', error);
-            return 'Error loading visualization content';
+            vscode.window.showErrorMessage('Git Stats: failed to load visualization template — ' + formatError(error));
+            return '<!DOCTYPE html><html><body><h3>Git Stats</h3><p>Failed to load the visualization template. Check the developer console for details.</p></body></html>';
         }
     }
 
@@ -413,7 +415,7 @@ export class ContributionVisualization {
         const endDate = moment(Object.values(stats)[0]?.endDate).endOf('day');
         const dates: string[] = [];
 
-        let currentDate = startDate.clone();
+        const currentDate = startDate.clone();
         while (currentDate.isSameOrBefore(endDate, 'day')) {
             dates.push(currentDate.format('YYYY-MM-DD'));
             currentDate.add(1, 'day');
@@ -613,7 +615,6 @@ export class ContributionVisualization {
                 for (let i = 0; i < n.ch.length; i++) {
                     const m = n.ch[i];
                     const mNorm = norm(m.p);
-                    const nNorm = norm(n.p);
                     if (all.has(mNorm) && all.get(mNorm) !== m) {
                         const parentOfM = all.get(mNorm);
                         if (parentOfM && parentOfM.t === 'd') {
@@ -657,6 +658,7 @@ export class ContributionVisualization {
             }
         } catch (error) {
             console.error('Error exporting PNG:', error);
+            vscode.window.showErrorMessage('Git Stats: failed to export chart image — ' + formatError(error));
         }
     }
 
@@ -673,6 +675,7 @@ export class ContributionVisualization {
             }
         } catch (error) {
             console.error('Error exporting CSV:', error);
+            vscode.window.showErrorMessage('Git Stats: failed to export CSV — ' + formatError(error));
         }
     }
 

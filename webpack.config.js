@@ -17,9 +17,7 @@ const config = {
   externals: {
     vscode: 'commonjs vscode',
     'simple-git': 'commonjs simple-git',
-    'moment': 'commonjs moment',
-    'fs': 'commonjs fs',
-    'path': 'commonjs path'
+    'moment': 'commonjs moment'
   },
   resolve: {
     extensions: ['.ts', '.js'],

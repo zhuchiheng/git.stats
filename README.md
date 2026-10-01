@@ -13,25 +13,27 @@ Click the Git Stats icon in VS Code status bar to open the statistics interface.
 ### Core Features
 - Interactive pie charts showing contribution distribution
 - Time series line charts displaying commit trends
+- Hourly commits/lines distribution charts
+- Author activity heatmap (day × hour grid)
+- Commit message word frequency analysis (with Chinese tokenization)
+- Code ownership by directory and file (primary author + ownership %)
+- Commit streaks tracking (current & longest per author)
+- File change leaderboard (top 100 files by commits)
 - Draggable and resizable chart containers
 - Real-time data updates
 
-### Statistics Metrics
-- Commit count per author
-- Code line changes (additions/deletions)
-- File modification statistics
-- Team overall contribution analysis
-
-### Visualization Features
-- Commit distribution pie chart
-- Code line changes distribution pie chart
-- Detailed tooltips (with percentages and specific values)
+### Multi-repo & Filtering
+- Multi-repo workspace support with repo and branch dropdown selectors
+- Cross-repo statistics merging
+- Developer filter across all charts and tables
 - Flexible time range selection:
-  - Last week
-  - Last month
-  - Last 3 months
-  - Last 6 months
-  - Last year
+  - Auto range (full history)
+  - Last week / month / 3 months / 6 months / year / 3 years
+  - Custom date picker
+
+### Export
+- CSV export for summary and file stats tables
+- PNG export for any chart
 
 ## Installation
 
@@ -74,6 +76,6 @@ Apache-2.0 license
 
 ## Support
 
-If you encounter any issues or have suggestions, please submit an Issue on our [GitHub repository](https://github.com/lixianmin/git.stats/issues).
+If you encounter any issues or have suggestions, please submit an Issue on our [GitHub repository](https://github.com/zhuchiheng/git.stats/issues).
 
 [简体中文](README_CN.md)

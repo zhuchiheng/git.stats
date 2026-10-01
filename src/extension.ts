@@ -2,15 +2,52 @@ import * as vscode from 'vscode';
 import { simpleGit, SimpleGit } from 'simple-git';
 import * as fs from 'fs';
 import * as path from 'path';
-import moment from 'moment';
-import { AuthorStats, DailyStats, ContributionResult, FileChangeStats, OwnershipEntry, GitContributionAnalyzer } from './gitAnalyzer';
+import { GitContributionAnalyzer } from './gitAnalyzer';
 import { ContributionVisualization } from './visualization';
+import { formatError, mergeResults } from './mergeStats';
+
+/** Directories never worth descending into while looking for nested repos. */
+const REPO_SCAN_SKIP_DIRS = new Set([
+    '.git',
+    '.hg',
+    '.svn',
+    '.github',
+    '.idea',
+    '.vscode',
+    '.vscode-test',
+    'node_modules',
+    'bower_components',
+    'vendor',
+    'out',
+    'dist',
+    'build',
+    'target',
+    'coverage',
+    '.venv',
+    'venv',
+    'env',
+    '__pycache__',
+    '.gradle',
+    '.cache',
+    '.git.stats'
+]);
+
+/** Maximum directory depth scanned below each workspace folder (0 = root itself). */
+const REPO_SCAN_MAX_DEPTH = 3;
 
 export async function findGitRepos(rootPath: string): Promise<{path: string, git: SimpleGit}[]> {
     const gitRepos: {path: string, git: SimpleGit}[] = [];
 
-    async function scanDirectory(dir: string) {
-        const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+    async function scanDirectory(dir: string, depth: number) {
+        if (depth > REPO_SCAN_MAX_DEPTH) {
+            return;
+        }
+        let entries: fs.Dirent[];
+        try {
+            entries = await fs.promises.readdir(dir, { withFileTypes: true });
+        } catch {
+            return; // unreadable directory — skip silently
+        }
         for (const entry of entries) {
             const fullPath = path.join(dir, entry.name);
             if (entry.isDirectory()) {
@@ -20,14 +57,14 @@ export async function findGitRepos(rootPath: string): Promise<{path: string, git
                         path: repoPath,
                         git: simpleGit(repoPath)
                     });
-                } else {
-                    await scanDirectory(fullPath);
+                } else if (!REPO_SCAN_SKIP_DIRS.has(entry.name)) {
+                    await scanDirectory(fullPath, depth + 1);
                 }
             }
         }
     }
 
-    await scanDirectory(rootPath);
+    await scanDirectory(rootPath, 0);
     return gitRepos;
 }
 
@@ -56,7 +93,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     context.subscriptions.push(statusBarItem);
 
-    let disposable = vscode.commands.registerCommand('git-stats.showStats', async () => {
+    const disposable = vscode.commands.registerCommand('git-stats.showStats', async () => {
         const workspaceFolders = vscode.workspace.workspaceFolders;
 
         if (!workspaceFolders) {
@@ -91,123 +128,42 @@ export function activate(context: vscode.ExtensionContext) {
 
             const analyzers = gitRepos.map(repo => new GitContributionAnalyzer(repo.git));
 
-            const visualization = new ContributionVisualization(context, analyzers, gitRepos);
-
-            vscode.window.withProgress({
+            await vscode.window.withProgress({
                 location: vscode.ProgressLocation.Notification,
-                title: "Analyzing Git history...",
-                cancellable: false
-            }, async (progress) => {
-                const allResults = await Promise.all(
-                    analyzers.map((analyzer, index) =>
-                        analyzer.getContributionStats(0, undefined, undefined, undefined, gitRepos[index].path)
-                    )
-                );
+                title: 'Git Stats',
+                cancellable: true
+            }, async (progress, token) => {
+                // Pick the initial branch before the first analysis so the
+                // primary analysis and the panel agree from the start.
+                const branchList = await analyzers[0].getBranches();
+                const initialBranch = branchList.includes('main') ? 'main' : '--all';
 
-                const combinedResult: ContributionResult = allResults.reduce((acc, result) => {
-                    for (const author in result.authorStats) {
-                        if (!acc.authorStats[author]) {
-                            acc.authorStats[author] = result.authorStats[author];
-                        } else {
-                            const s = result.authorStats[author];
-                            const t = acc.authorStats[author];
-                            t.totalCommits += s.totalCommits;
-                            t.totalInsertions += s.totalInsertions;
-                            t.totalDeletions += s.totalDeletions;
-                            t.totalFiles += s.totalFiles;
+                progress.report({ message: 'Analyzing Git history...' });
 
-                            for (const date in s.dailyStats) {
-                                if (!t.dailyStats[date]) {
-                                    t.dailyStats[date] = s.dailyStats[date];
-                                } else {
-                                    t.dailyStats[date].commits += s.dailyStats[date].commits;
-                                    t.dailyStats[date].insertions += s.dailyStats[date].insertions;
-                                    t.dailyStats[date].deletions += s.dailyStats[date].deletions;
-                                    t.dailyStats[date].files += s.dailyStats[date].files;
-                                }
-                            }
+                const cancellation = new Promise<never>((_, reject) => {
+                    token.onCancellationRequested(() => reject(new vscode.CancellationError()));
+                });
 
-                            for (const hour in s.hourlyStats) {
-                                if (!t.hourlyStats[hour]) {
-                                    t.hourlyStats[hour] = s.hourlyStats[hour];
-                                } else {
-                                    t.hourlyStats[hour].commits += s.hourlyStats[hour].commits;
-                                    t.hourlyStats[hour].insertions += s.hourlyStats[hour].insertions;
-                                    t.hourlyStats[hour].deletions += s.hourlyStats[hour].deletions;
-                                    t.hourlyStats[hour].files += s.hourlyStats[hour].files;
-                                }
-                            }
+                const allResults = await Promise.race([
+                    Promise.all(analyzers.map((analyzer, index) => {
+                        progress.report({ message: `Analyzing ${gitRepos[index].path}...` });
+                        return analyzer.getContributionStats(0, undefined, undefined, undefined, initialBranch);
+                    })),
+                    cancellation
+                ]);
 
-                            if (s.weeklyHourly) {
-                                if (!t.weeklyHourly) {
-                                    t.weeklyHourly = Array.from({ length: 7 }, () => new Array(24).fill(0));
-                                }
-                                for (let d = 0; d < 7; d++) {
-                                    for (let h = 0; h < 24; h++) {
-                                        t.weeklyHourly[d][h] += (s.weeklyHourly[d]?.[h] || 0);
-                                    }
-                                }
-                            }
-                        }
-                    }
+                progress.report({ message: 'Building visualization...' });
 
-                    for (const fs of result.fileStats) {
-                        const existing = acc.fileStats.find(f => f.file === fs.file);
-                        if (existing) {
-                            existing.totalCommits += fs.totalCommits;
-                            existing.totalInsertions += fs.totalInsertions;
-                            existing.totalDeletions += fs.totalDeletions;
-                        } else {
-                            acc.fileStats.push({ ...fs });
-                        }
-                    }
-
-                    for (const ow of result.ownership) {
-                        const existing = acc.ownership.find(o => o.path === ow.path);
-                        if (existing) {
-                            existing.totalLines += ow.totalLines;
-                            for (const [author, lines] of Object.entries(ow.linesByAuthor)) {
-                                existing.linesByAuthor[author] = (existing.linesByAuthor[author] || 0) + lines;
-                            }
-                            let maxLines = 0;
-                            let primaryAuthor = '';
-                            for (const [author, lines] of Object.entries(existing.linesByAuthor)) {
-                                if (lines > maxLines) {
-                                    maxLines = lines;
-                                    primaryAuthor = author;
-                                }
-                            }
-                            existing.primaryAuthor = primaryAuthor;
-                            existing.primaryAuthorPercentage = existing.totalLines > 0 ? Math.round((maxLines / existing.totalLines) * 100) : 0;
-                        } else {
-                            acc.ownership.push({ ...ow, linesByAuthor: { ...ow.linesByAuthor } });
-                        }
-                    }
-
-                    for (const [word, count] of Object.entries(result.wordFreq || {})) {
-                        acc.wordFreq[word] = (acc.wordFreq[word] || 0) + count;
-                    }
-
-                    for (const [date, details] of Object.entries(result.commitDetails || {})) {
-                        if (!acc.commitDetails[date]) acc.commitDetails[date] = [];
-                        acc.commitDetails[date].push(...details);
-                    }
-                    for (const [key, details] of Object.entries(result.heatmapDetails || {})) {
-                        if (!acc.heatmapDetails[key]) acc.heatmapDetails[key] = [];
-                        acc.heatmapDetails[key].push(...details);
-                    }
-
-                    return acc;
-                }, { authorStats: {}, fileStats: [], ownership: [], wordFreq: {}, commitDetails: {}, heatmapDetails: {} });
-
-                combinedResult.fileStats.sort((a, b) => b.totalCommits - a.totalCommits);
-                combinedResult.ownership.sort((a, b) => b.totalLines - a.totalLines);
-
-                await visualization.show(combinedResult);
+                const merged = mergeResults(allResults);
+                const visualization = new ContributionVisualization(context, analyzers, gitRepos, initialBranch, branchList);
+                await visualization.show(merged);
             });
         } catch (error) {
-            vscode.window.showErrorMessage('Error analyzing Git history: ' + error);
+            if (error instanceof vscode.CancellationError) {
+                return; // user cancelled — nothing to report
+            }
             console.error('Error:', error);
+            vscode.window.showErrorMessage('Error analyzing Git history: ' + formatError(error));
         }
     });
 
