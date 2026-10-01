@@ -213,8 +213,18 @@ function activate(context) {
                     for (const [word, count] of Object.entries(result.wordFreq || {})) {
                         acc.wordFreq[word] = (acc.wordFreq[word] || 0) + count;
                     }
+                    for (const [date, details] of Object.entries(result.commitDetails || {})) {
+                        if (!acc.commitDetails[date])
+                            acc.commitDetails[date] = [];
+                        acc.commitDetails[date].push(...details);
+                    }
+                    for (const [key, details] of Object.entries(result.heatmapDetails || {})) {
+                        if (!acc.heatmapDetails[key])
+                            acc.heatmapDetails[key] = [];
+                        acc.heatmapDetails[key].push(...details);
+                    }
                     return acc;
-                }, { authorStats: {}, fileStats: [], ownership: [], wordFreq: {} });
+                }, { authorStats: {}, fileStats: [], ownership: [], wordFreq: {}, commitDetails: {}, heatmapDetails: {} });
                 combinedResult.fileStats.sort((a, b) => b.totalCommits - a.totalCommits);
                 combinedResult.ownership.sort((a, b) => b.totalLines - a.totalLines);
                 yield visualization.show(combinedResult);

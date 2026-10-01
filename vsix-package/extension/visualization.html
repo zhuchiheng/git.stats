@@ -119,6 +119,163 @@
             font-size: 24px;
             color: var(--vscode-foreground);
         }
+        .heatmap-wrapper {
+            overflow-x: auto;
+            padding: 8px 0;
+        }
+        .heatmap-table {
+            border-collapse: collapse;
+            font-size: 11px;
+        }
+        .heatmap-table td {
+            width: 20px;
+            height: 20px;
+            text-align: center;
+            border: 1px solid rgba(128, 128, 128, 0.15);
+            font-size: 9px;
+            color: var(--vscode-foreground);
+        }
+        .heatmap-table th {
+            padding: 4px 6px;
+            font-weight: 500;
+            font-size: 11px;
+            color: var(--vscode-foreground);
+            text-align: center;
+        }
+        .heatmap-label {
+            font-weight: 500;
+            padding-right: 8px;
+            text-align: right;
+            color: var(--vscode-foreground);
+        }
+        .heatmap-legend {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            margin-top: 8px;
+            font-size: 11px;
+            color: var(--vscode-foreground);
+        }
+        .heatmap-legend-cell {
+            width: 16px;
+            height: 16px;
+            border-radius: 2px;
+        }
+        .file-section {
+            margin-bottom: 20px;
+        }
+        .file-section .summary-table {
+            font-size: 12px;
+        }
+        .file-section .summary-table td:first-child {
+            max-width: 400px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .ownership-dir {
+            font-weight: 500;
+            color: var(--vscode-foreground);
+        }
+        .ownership-bar {
+            display: inline-block;
+            height: 8px;
+            border-radius: 4px;
+            margin-right: 4px;
+            vertical-align: middle;
+        }
+        .export-btn {
+            background: none;
+            border: 1px solid var(--vscode-dropdown-border);
+            color: var(--vscode-foreground);
+            padding: 2px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            margin-left: 8px;
+            opacity: 0.6;
+            vertical-align: middle;
+        }
+        .export-btn:hover {
+            opacity: 1;
+            background-color: var(--vscode-list-hoverBackground);
+        }
+        .word-freq-table .wf-bar {
+            display: inline-block;
+            height: 10px;
+            border-radius: 3px;
+            vertical-align: middle;
+            background-color: rgba(156, 39, 176, 0.6);
+        }
+        .word-freq-table td:first-child {
+            font-weight: 500;
+            min-width: 80px;
+        }
+        .streak-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: 500;
+        }
+        .streak-hot {
+            background-color: rgba(244, 67, 54, 0.15);
+            color: #F44336;
+        }
+        .streak-warm {
+            background-color: rgba(255, 152, 0, 0.15);
+            color: #FF9800;
+        }
+        .streak-cold {
+            background-color: rgba(33, 150, 243, 0.12);
+            color: #2196F3;
+        }
+        .commit-tooltip {
+            display: none;
+            position: fixed;
+            z-index: 9999;
+            background: var(--vscode-editor-background, #1e1e1e);
+            border: 1px solid var(--vscode-widget-border, #454545);
+            border-radius: 8px;
+            padding: 10px 14px;
+            font-size: 12px;
+            line-height: 1.6;
+            max-width: 420px;
+            max-height: 320px;
+            overflow-y: auto;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+            color: var(--vscode-editor-foreground, #ccc);
+        }
+        .commit-tooltip .tt-header {
+            font-weight: 600;
+            margin-bottom: 6px;
+            padding-bottom: 4px;
+            border-bottom: 1px solid var(--vscode-widget-border, #454545);
+        }
+        .commit-tooltip .tt-row {
+            display: flex;
+            gap: 8px;
+            padding: 2px 0;
+        }
+        .commit-tooltip .tt-time {
+            white-space: nowrap;
+            color: var(--vscode-textLink-foreground, #4daafc);
+            min-width: 42px;
+        }
+        .commit-tooltip .tt-author {
+            font-weight: 500;
+            min-width: 60px;
+            white-space: nowrap;
+        }
+        .commit-tooltip .tt-msg {
+            word-break: break-all;
+        }
+        .commit-tooltip .tt-more {
+            text-align: center;
+            opacity: 0.6;
+            padding-top: 4px;
+            font-style: italic;
+        }
     </style>
 </head>
 <body>
@@ -130,7 +287,8 @@
                 <span class="date-separator">to</span>
                 <input type="date" id="endDate" class="date-picker" title="End Date">
                 <select id="timeRange">
-                    <option value="custom" selected>Custom Range</option>
+                    <option value="auto" selected>Auto Range</option>
+                    <option value="custom">Custom Range</option>
                     <option value="7">Last Week</option>
                     <option value="30">Last Month</option>
                     <option value="90">Last 3 Months</option>
@@ -155,39 +313,122 @@
             <div class="pie-chart-container">
                 <canvas id="pieChart"></canvas>
             </div>
-            <h2 class="chart-title">Daily Commits</h2>
+            <h2 class="chart-title">Daily Commits
+                <button class="export-btn" onclick="exportChartPNG('commitChart', 'daily-commits')" title="Export as PNG">PNG</button>
+            </h2>
             <canvas id="commitChart"></canvas>
         </div>
         <div class="chart-container">
             <div class="pie-chart-container">
                 <canvas id="linesChangedPieChart"></canvas>
             </div>
-            <h2 class="chart-title">Daily Lines Changed</h2>
+            <h2 class="chart-title">Daily Lines Changed
+                <button class="export-btn" onclick="exportChartPNG('changeChart', 'daily-lines-changed')" title="Export as PNG">PNG</button>
+            </h2>
             <canvas id="changeChart"></canvas>
         </div>
         <div class="chart-container">
-            <h2 class="chart-title">Hourly Commits</h2>
+            <h2 class="chart-title">Hourly Commits
+                <button class="export-btn" onclick="exportChartPNG('hourlyCommitChart', 'hourly-commits')" title="Export as PNG">PNG</button>
+            </h2>
             <canvas id="hourlyCommitChart"></canvas>
         </div>
         <div class="chart-container">
-            <h2 class="chart-title">Hourly Lines Changes</h2>
+            <h2 class="chart-title">Hourly Lines Changes
+                <button class="export-btn" onclick="exportChartPNG('hourlyChangeChart', 'hourly-lines-changed')" title="Export as PNG">PNG</button>
+            </h2>
             <canvas id="hourlyChangeChart"></canvas>
         </div>
         <div class="calendar-container">
             <h2 class="chart-title">Contribution Calendar</h2>
-            <div id="calendar" style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; max-height: 800px; overflow-y: auto; padding: 4px;"></div>
+            <div id="calendar" style="width: 100%; max-height: 800px; overflow-y: auto; padding: 4px;"></div>
         </div>
-        <h2>Summary</h2>
-        <table class="summary-table">
+        <h2>Summary
+            <button class="export-btn" onclick="exportSummaryCSV()" title="Export summary as CSV">CSV</button>
+        </h2>
+        <table class="summary-table" id="summaryTable">
             <tr>
                 <th>Author</th>
                 <th>Total Commits</th>
                 <th>Lines Added</th>
                 <th>Lines Deleted</th>
                 <th>Files Changed</th>
+                <th>Current Streak</th>
+                <th>Longest Streak</th>
             </tr>
-            {{AUTHOR_ROWS}}
+            <tbody id="summaryBody">{{AUTHOR_ROWS}}</tbody>
         </table>
+
+        <div class="chart-container" style="height: auto; max-height: 600px; overflow-y: auto;">
+            <h2 class="chart-title">File Change Leaderboard
+                <button class="export-btn" onclick="exportFileStatsCSV()" title="Export file stats as CSV">CSV</button>
+            </h2>
+            <table class="summary-table" id="fileStatsTable">
+                <tr>
+                    <th>File</th>
+                    <th>Commits</th>
+                    <th>Added</th>
+                    <th>Deleted</th>
+                    <th>Changes</th>
+                </tr>
+                <tbody id="fileStatsBody"></tbody>
+            </table>
+        </div>
+
+        <div class="chart-container" style="height: auto; max-height: 600px; overflow-y: auto;">
+            <h2 class="chart-title">Commit Message Word Cloud</h2>
+            <table class="summary-table word-freq-table" id="wordFreqTable">
+                <tr>
+                    <th>Word</th>
+                    <th>Count</th>
+                    <th></th>
+                </tr>
+                <tbody id="wordFreqBody"></tbody>
+            </table>
+        </div>
+
+        <div class="chart-container" style="height: auto;">
+            <h2 class="chart-title">Author Activity Heatmap (Commits by Day × Hour)</h2>
+            <div class="heatmap-wrapper">
+                <div id="heatmapContainer"></div>
+            </div>
+            <div class="heatmap-legend">
+                <span>Less</span>
+                <div class="heatmap-legend-cell" style="background-color: rgba(33, 150, 243, 0.05);"></div>
+                <div class="heatmap-legend-cell" style="background-color: rgba(33, 150, 243, 0.2);"></div>
+                <div class="heatmap-legend-cell" style="background-color: rgba(33, 150, 243, 0.4);"></div>
+                <div class="heatmap-legend-cell" style="background-color: rgba(33, 150, 243, 0.6);"></div>
+                <div class="heatmap-legend-cell" style="background-color: rgba(33, 150, 243, 0.8);"></div>
+                <div class="heatmap-legend-cell" style="background-color: rgba(33, 150, 243, 1);"></div>
+                <span>More</span>
+            </div>
+        </div>
+
+        <div class="chart-container" style="height: auto; max-height: 600px; overflow-y: auto;">
+            <h2 class="chart-title">Code Ownership — Directory</h2>
+            <table class="summary-table" id="dirOwnershipTable">
+                <tr>
+                    <th>Directory</th>
+                    <th>Primary Author</th>
+                    <th>Ownership</th>
+                    <th>Total Lines</th>
+                </tr>
+                <tbody id="dirOwnershipBody"></tbody>
+            </table>
+        </div>
+
+        <div class="chart-container" style="height: auto; max-height: 600px; overflow-y: auto;">
+            <h2 class="chart-title">Code Ownership — Files</h2>
+            <table class="summary-table" id="fileOwnershipTable">
+                <tr>
+                    <th>File</th>
+                    <th>Primary Author</th>
+                    <th>Ownership</th>
+                    <th>Total Lines</th>
+                </tr>
+                <tbody id="fileOwnershipBody"></tbody>
+            </table>
+        </div>
     </div>
     <script>
         const pieChartContainers = document.querySelectorAll('.pie-chart-container');
@@ -265,13 +506,16 @@
         const start = new Date('{{START_DATE}}');
         const end = new Date('{{END_DATE}}');
         const diffDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
+        const isAutoRange = {{IS_AUTO}};
 
-        if (diffDays === 7) {
-            document.getElementById('timeRange').value = '7';
-        } else if (diffDays === 30) {
-            document.getElementById('timeRange').value = '30';
-        } else {
-            document.getElementById('timeRange').value = 'custom';
+        if (!isAutoRange) {
+            if (diffDays === 7) {
+                document.getElementById('timeRange').value = '7';
+            } else if (diffDays === 30) {
+                document.getElementById('timeRange').value = '30';
+            } else {
+                document.getElementById('timeRange').value = 'custom';
+            }
         }
 
         function createCommitChart(data) {
@@ -626,30 +870,60 @@
                         renderCalendar(message.calendarData);
                     }
 
-                    const summaryTable = document.querySelector('.summary-table');
-                    if (summaryTable && message.authorStats) {
-                        const tableHeader = summaryTable.querySelector('tr');
-                        if (tableHeader) {
-                            summaryTable.innerHTML = '';
-                            summaryTable.appendChild(tableHeader);
+                    if (message.fileStats) {
+                        renderFileStats(message.fileStats);
+                    }
+                    if (message.weeklyHourlyGrid) {
+                        renderHeatmap(message.weeklyHourlyGrid, message.weeklyHourlyMax || 1);
+                    }
+                    if (message.dirOwnership && message.ownership) {
+                        renderOwnership(message.dirOwnership, message.ownership);
+                    }
 
-                            message.authorStats.forEach(authorStat => {
-                                const row = document.createElement('tr');
-                                const cells = [
-                                    authorStat.author,
-                                    authorStat.totalCommits || 0,
-                                    authorStat.totalInsertions || 0,
-                                    authorStat.totalDeletions || 0,
-                                    authorStat.totalFiles || 0
-                                ];
-                                cells.forEach(value => {
-                                    const cell = document.createElement('td');
-                                    cell.textContent = value.toString();
-                                    row.appendChild(cell);
-                                });
-                                summaryTable.appendChild(row);
-                            });
-                        }
+                    if (message.wordFreq) {
+                        renderWordFreq(message.wordFreq);
+                    }
+
+                    if (message.commitDetails) {
+                        commitDetails = message.commitDetails;
+                        addChartClick(commitChart, commitDetails);
+                    }
+                    if (message.heatmapDetails) {
+                        heatmapDetails = message.heatmapDetails;
+                    }
+
+                    if (message.isAuto) {
+                        document.getElementById('timeRange').value = 'auto';
+                    }
+                    if (message.startDateVal) {
+                        document.getElementById('startDate').value = message.startDateVal;
+                    }
+                    if (message.endDateVal) {
+                        document.getElementById('endDate').value = message.endDateVal;
+                    }
+
+                    const summaryBody = document.getElementById('summaryBody');
+                    if (summaryBody && message.authorStats) {
+                        summaryBody.innerHTML = '';
+                        message.authorStats.forEach(function(authorStat) {
+                            const row = document.createElement('tr');
+                            const cur = authorStat.currentStreak || 0;
+                            const longest = authorStat.longestStreak || 0;
+                            var streakHtml = cur > 1
+                                ? '<span class="streak-badge ' + (cur >= 7 ? 'streak-hot' : cur >= 3 ? 'streak-warm' : 'streak-cold') + '">' + cur + ' days</span>'
+                                : (cur === 1 ? '1 day' : '-');
+                            var longestHtml = longest > 1
+                                ? '<span class="streak-badge streak-cold">' + longest + ' days</span>'
+                                : (longest === 1 ? '1 day' : '-');
+                            row.innerHTML = '<td>' + authorStat.author + '</td>'
+                                + '<td>' + (authorStat.totalCommits || 0) + '</td>'
+                                + '<td>' + (authorStat.totalInsertions || 0) + '</td>'
+                                + '<td>' + (authorStat.totalDeletions || 0) + '</td>'
+                                + '<td>' + (authorStat.totalFiles || 0) + '</td>'
+                                + '<td>' + streakHtml + '</td>'
+                                + '<td>' + longestHtml + '</td>';
+                            summaryBody.appendChild(row);
+                        });
                     }
                     break;
             }
@@ -662,6 +936,18 @@
         timeRangeSelect.addEventListener('change', function(e) {
             const value = this.value;
             if (value === 'custom') {
+                return;
+            }
+
+            if (value === 'auto') {
+                startDateInput.value = '';
+                endDateInput.value = '';
+                vscode.postMessage({
+                    command: 'timeRangeChanged',
+                    days: 0,
+                    startDate: undefined,
+                    endDate: undefined
+                });
                 return;
             }
 
@@ -716,10 +1002,11 @@
             container.innerHTML = "";
 
             const calendarWrapper = document.createElement('div');
-            calendarWrapper.style.display = 'grid';
-            calendarWrapper.style.gridTemplateColumns = 'repeat(8, 1fr)';
-            calendarWrapper.style.gap = '8px';
+            calendarWrapper.style.display = 'flex';
+            calendarWrapper.style.flexWrap = 'wrap';
+            calendarWrapper.style.gap = '16px';
             calendarWrapper.style.padding = '8px';
+            calendarWrapper.style.justifyContent = 'flex-start';
 
             const months = {};
             calendarData.forEach(day => {
@@ -736,6 +1023,9 @@
                 monthContainer.style.display = 'flex';
                 monthContainer.style.flexDirection = 'column';
                 monthContainer.style.gap = '4px';
+                monthContainer.style.flex = '1 0 280px';
+                monthContainer.style.maxWidth = '400px';
+                monthContainer.style.minWidth = '220px';
 
                 const monthHeader = document.createElement('div');
                 monthHeader.textContent = month;
@@ -751,11 +1041,13 @@
                 gridContainer.style.display = 'grid';
                 gridContainer.style.gridTemplateColumns = 'repeat(7, 1fr)';
                 gridContainer.style.gap = '2px';
+                gridContainer.style.width = '100%';
 
                 const firstDay = new Date(days[0].date);
                 const startDay = firstDay.getDay();
                 for (let i = 0; i < startDay; i++) {
                     const empty = document.createElement('div');
+                    empty.style.width = empty.style.height = 'clamp(20px, 3.5vw, 28px)';
                     gridContainer.appendChild(empty);
                 }
 
@@ -764,14 +1056,18 @@
                     cell.style.backgroundColor = day.totalCommits > 0
                         ? `rgba(46, 204, 113, ${day.colorIntensity})`
                         : 'transparent';
-                    cell.style.width = '24px';
-                    cell.style.height = '24px';
+                    cell.style.width = cell.style.height = 'clamp(20px, 3.5vw, 28px)';
                     cell.style.borderRadius = '4px';
                     cell.style.display = 'flex';
                     cell.style.alignItems = 'center';
                     cell.style.justifyContent = 'center';
-                    cell.style.fontSize = '12px';
+                    cell.style.fontSize = 'clamp(10px, 1.2vw, 13px)';
                     cell.title = `Date: ${day.date}, Commits: ${day.totalCommits}`;
+                    cell.onclick = function(ev) {
+                        var det = commitDetails[day.date];
+                        if (det && det.length > 0) showTooltip('Date: ' + day.date, det, ev);
+                        else hideTooltip();
+                    };
 
                     const dateNum = new Date(day.date).getDate();
                     cell.textContent = dateNum;
@@ -786,8 +1082,277 @@
             container.appendChild(calendarWrapper);
         }
 
+        function renderFileStats(fileStats) {
+            const tbody = document.getElementById('fileStatsBody');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+            const limit = Math.min(fileStats.length, 100);
+            for (let i = 0; i < limit; i++) {
+                const fs = fileStats[i];
+                const row = document.createElement('tr');
+                const changes = fs.totalInsertions + fs.totalDeletions;
+                row.innerHTML = '<td title="' + fs.file + '">' + fs.file + '</td>'
+                    + '<td>' + fs.totalCommits + '</td>'
+                    + '<td>' + fs.totalInsertions + '</td>'
+                    + '<td>' + fs.totalDeletions + '</td>'
+                    + '<td>' + changes + '</td>';
+                tbody.appendChild(row);
+            }
+        }
+
+        function renderHeatmap(grid, max) {
+            const container = document.getElementById('heatmapContainer');
+            if (!container) return;
+            container.innerHTML = '';
+
+            const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            const table = document.createElement('table');
+            table.className = 'heatmap-table';
+
+            const headerRow = document.createElement('tr');
+            const corner = document.createElement('th');
+            corner.textContent = '';
+            headerRow.appendChild(corner);
+            for (let h = 0; h < 24; h++) {
+                const th = document.createElement('th');
+                th.textContent = h;
+                headerRow.appendChild(th);
+            }
+            table.appendChild(headerRow);
+
+            const logMax = Math.log1p(max);
+            for (let d = 0; d < 7; d++) {
+                const row = document.createElement('tr');
+                const label = document.createElement('td');
+                label.className = 'heatmap-label';
+                label.textContent = DAYS[d];
+                row.appendChild(label);
+
+                for (let h = 0; h < 24; h++) {
+                    const cell = document.createElement('td');
+                    const val = grid[d]?.[h] || 0;
+                    if (val > 0) {
+                        const intensity = Math.log1p(val) / logMax;
+                        cell.style.backgroundColor = 'rgba(33, 150, 243, ' + intensity + ')';
+                        cell.style.color = intensity > 0.5 ? '#fff' : 'inherit';
+                        cell.textContent = val > 99 ? '99+' : val;
+                    }
+                    (function(dd, hh) {
+                        cell.onclick = function(ev) {
+                            var key = dd + '-' + hh;
+                            var det = heatmapDetails[key];
+                            if (det && det.length > 0) {
+                                showTooltip(DAYS[dd] + ' ' + hh + ':00', det, ev);
+                            } else {
+                                hideTooltip();
+                            }
+                        };
+                    })(d, h);
+                    cell.title = DAYS[d] + ' ' + h + ':00 - ' + val + ' commits';
+                    row.appendChild(cell);
+                }
+                table.appendChild(row);
+            }
+            container.appendChild(table);
+        }
+
+        function renderOwnership(dirOwnership, fileOwnership) {
+            const dirTbody = document.getElementById('dirOwnershipBody');
+            if (dirTbody) {
+                dirTbody.innerHTML = '';
+                const limit = Math.min(dirOwnership.length, 50);
+                for (let i = 0; i < limit; i++) {
+                    const d = dirOwnership[i];
+                    const barWidth = Math.max(d.primaryAuthorPercentage, 1);
+                    const row = document.createElement('tr');
+                    row.innerHTML = '<td class="ownership-dir">' + d.directory + '</td>'
+                        + '<td>' + d.primaryAuthor + '</td>'
+                        + '<td><span class="ownership-bar" style="width:' + barWidth + 'px;background-color:rgba(33,150,243,0.6);"></span>' + d.primaryAuthorPercentage + '%</td>'
+                        + '<td>' + d.totalLines + '</td>';
+                    dirTbody.appendChild(row);
+                }
+            }
+
+            const fileTbody = document.getElementById('fileOwnershipBody');
+            if (fileTbody) {
+                fileTbody.innerHTML = '';
+                const limit = Math.min(fileOwnership.length, 100);
+                for (let i = 0; i < limit; i++) {
+                    const o = fileOwnership[i];
+                    const barWidth = Math.max(o.primaryAuthorPercentage, 1);
+                    const row = document.createElement('tr');
+                    row.innerHTML = '<td title="' + o.path + '">' + o.path + '</td>'
+                        + '<td>' + o.primaryAuthor + '</td>'
+                        + '<td><span class="ownership-bar" style="width:' + barWidth + 'px;background-color:rgba(76,175,80,0.6);"></span>' + o.primaryAuthorPercentage + '%</td>'
+                        + '<td>' + o.totalLines + '</td>';
+                    fileTbody.appendChild(row);
+                }
+            }
+        }
+
+        function renderWordFreq(wordFreq) {
+            const tbody = document.getElementById('wordFreqBody');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+            const entries = Object.entries(wordFreq);
+            if (entries.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--vscode-foreground);opacity:0.5;">No commit messages found</td></tr>';
+                return;
+            }
+            entries.sort((a, b) => b[1] - a[1]);
+            const maxCount = entries[0][1];
+            const limit = Math.min(entries.length, 50);
+            for (let i = 0; i < limit; i++) {
+                const word = entries[i][0];
+                const count = entries[i][1];
+                const barWidth = Math.round((count / maxCount) * 200);
+                const row = document.createElement('tr');
+                row.innerHTML = '<td>' + word + '</td>'
+                    + '<td>' + count + '</td>'
+                    + '<td><span class="wf-bar" style="width:' + barWidth + 'px;"></span></td>';
+                tbody.appendChild(row);
+            }
+        }
+
+        function exportChartPNG(canvasId, name) {
+            const canvas = document.getElementById(canvasId);
+            if (!canvas) return;
+            const dataUrl = canvas.toDataURL('image/png');
+            vscode.postMessage({
+                command: 'exportPng',
+                dataUrl: dataUrl,
+                defaultFilename: 'git-stats-' + name + '.png'
+            });
+        }
+
+        function exportSummaryCSV() {
+            const table = document.getElementById('summaryTable');
+            if (!table) return;
+            const rows = table.querySelectorAll('tr');
+            let csv = '';
+            for (let i = 0; i < rows.length; i++) {
+                const cells = rows[i].querySelectorAll('th, td');
+                const rowData = [];
+                for (let j = 0; j < cells.length; j++) {
+                    let text = cells[j].textContent.trim();
+                    if (text.includes(',') || text.includes('"')) {
+                        text = '"' + text.replace(/"/g, '""') + '"';
+                    }
+                    rowData.push(text);
+                }
+                csv += rowData.join(',') + '\n';
+            }
+            vscode.postMessage({
+                command: 'exportCsv',
+                csvContent: csv,
+                defaultFilename: 'git-stats-summary.csv'
+            });
+        }
+
+        function exportFileStatsCSV() {
+            const table = document.getElementById('fileStatsTable');
+            if (!table) return;
+            const rows = table.querySelectorAll('tr');
+            let csv = '';
+            for (let i = 0; i < rows.length; i++) {
+                const cells = rows[i].querySelectorAll('th, td');
+                const rowData = [];
+                for (let j = 0; j < cells.length; j++) {
+                    let text = cells[j].textContent.trim();
+                    if (text.includes(',') || text.includes('"')) {
+                        text = '"' + text.replace(/"/g, '""') + '"';
+                    }
+                    rowData.push(text);
+                }
+                csv += rowData.join(',') + '\n';
+            }
+            vscode.postMessage({
+                command: 'exportCsv',
+                csvContent: csv,
+                defaultFilename: 'git-stats-file-changes.csv'
+            });
+        }
+
+        function showTooltip(header, details, event) {
+            const tooltip = document.getElementById('commitTooltip');
+            const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+            let html = '<div class="tt-header">' + header + '</div>';
+            const show = details.slice(-15);
+            for (const d of show) {
+                var timeStr = d.d ? d.d + ' ' + d.t : d.t;
+                html += '<div class="tt-row"><span class="tt-time">' + timeStr + '</span><span class="tt-author">' + escapeHtml(d.a) + '</span><span class="tt-msg">' + escapeHtml(d.m) + '</span></div>';
+            }
+            if (details.length > 15) {
+                html += '<div class="tt-more">… and ' + (details.length - 15) + ' more</div>';
+            }
+            tooltip.innerHTML = html;
+            tooltip.style.display = 'block';
+
+            var ex = event.clientX || (event.touches ? event.touches[0].clientX : 0);
+            var ey = event.clientY || (event.touches ? event.touches[0].clientY : 0);
+            var tw = tooltip.offsetWidth;
+            var th = tooltip.offsetHeight;
+            var wx = window.innerWidth;
+            var wy = window.innerHeight;
+
+            var left = ex + 12;
+            var top_ = ey - 10;
+            if (left + tw > wx - 10) left = ex - tw - 12;
+            if (top_ + th > wy - 10) top_ = ey - th - 20;
+            if (top_ < 4) top_ = 4;
+            tooltip.style.left = left + 'px';
+            tooltip.style.top = top_ + 'px';
+        }
+
+        function escapeHtml(str) {
+            var div = document.createElement('div');
+            div.appendChild(document.createTextNode(str));
+            return div.innerHTML;
+        }
+
+        function addChartClick(chart, details) {
+            if (!chart || !details) return;
+    chart.options.onClick = function(ev, el) {
+        if (el && el.length > 0) {
+            var label = chart.data.labels[el[0].index];
+            var d = details[label];
+            if (d && d.length > 0) showTooltip('Date: ' + label, d, ev);
+            else hideTooltip();
+        } else {
+            hideTooltip();
+        }
+    };
+}
+
+
+        function hideTooltip() {
+            document.getElementById('commitTooltip').style.display = 'none';
+        }
+
+        document.addEventListener('click', function(e) {
+            var t = document.getElementById('commitTooltip');
+            if (t.style.display === 'block' && !t.contains(e.target)) {
+                var isChartClick = e.target.closest && (e.target.closest('canvas') || e.target.closest('.heatmap-table td'));
+                if (!isChartClick) hideTooltip();
+            }
+        });
+
+        const fileStats = {{FILE_STATS}};
+        const ownership = {{OWNERSHIP}};
+        const dirOwnership = {{DIR_OWNERSHIP}};
+        const weeklyHourlyGrid = {{WEEKLY_HOURLY_GRID}};
+        const weeklyHourlyMax = {{WEEKLY_HOURLY_MAX}};
+        const wordFreq = {{WORD_FREQ}};
+        var commitDetails = {{COMMIT_DETAILS}};
+        var heatmapDetails = {{HEATMAP_DETAILS}};
+        addChartClick(commitChart, commitDetails);
+
         const calendarData = {{CALENDAR_DATA}};
         renderCalendar(calendarData);
+        renderFileStats(fileStats);
+        renderHeatmap(weeklyHourlyGrid, weeklyHourlyMax);
+        renderOwnership(dirOwnership, ownership);
+        renderWordFreq(wordFreq);
 
         const developerSelect = document.getElementById('developerSelect');
         developerSelect.addEventListener('change', function(e) {
@@ -798,5 +1363,6 @@
             });
         });
     </script>
+    <div id="commitTooltip" class="commit-tooltip" onclick="this.style.display='none'" ontouchstart="this.style.display='none'"></div>
 </body>
 </html>
