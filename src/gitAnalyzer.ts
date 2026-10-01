@@ -216,7 +216,12 @@ export function parseGitLog(rawOutput: string, includeFile: (file: string) => bo
             continue;
         }
 
-        const date = moment(dateStr);
+        // %aI always carries the committer's UTC offset. parseZone keeps that
+        // offset instead of converting to the viewer's local time, so the day,
+        // hour and weekday buckets reflect when the author actually committed
+        // and stay stable no matter where the repository is viewed (a plain
+        // moment(dateStr) shifts every bucket by the viewer's UTC offset).
+        const date = moment.parseZone(dateStr);
         if (!date.isValid()) continue;
 
         if (!stats[author]) {
