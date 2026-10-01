@@ -6,6 +6,7 @@ import { AuthorStats, GitContributionAnalyzer, ContributionResult, FileChangeSta
 import moment from 'moment';
 import { SimpleGit } from 'simple-git';
 import { escapeHtml, formatError, mergeResults, toSafeJson } from './mergeStats';
+import { HealthRaw, HealthReport, buildHealthReport } from './healthChecks';
 
 interface ChartData {
     labels: string[];
@@ -50,6 +51,7 @@ export class ContributionVisualization {
     private wordFreqCache: { [word: string]: number } = {};
     private commitDetailsCache: { [date: string]: { t: string; a: string; m: string }[] } = {};
     private heatmapDetailsCache: { [dayHour: string]: { d: string; t: string; a: string; m: string }[] } = {};
+    private healthCache: HealthRaw | undefined;
     private autoRangeActive: boolean = true;
     private selectedBranch: string = '--all';
     private branchList: string[] = [];
@@ -72,6 +74,15 @@ export class ContributionVisualization {
     public dispose() {
         this.panel?.dispose();
         this.disposables.forEach(d => d.dispose());
+    }
+
+    /**
+     * Health report for the currently cached dataset. Always computed over the
+     * full result rather than the developer-filtered view — a per-developer
+     * health score would be noise, and the file counters are global anyway.
+     */
+    private getHealthReport(): HealthReport {
+        return buildHealthReport(this.healthCache, this.fileStatsCache, this.globalCache);
     }
 
     private async updateVisualization(stats: { [author: string]: AuthorStats }) {
@@ -123,6 +134,7 @@ export class ContributionVisualization {
                 wordFreq: this.wordFreqCache,
                 commitDetails: this.commitDetailsCache,
                 heatmapDetails: this.heatmapDetailsCache,
+                health: this.getHealthReport(),
                 isAuto: this.autoRangeActive,
                 startDateVal: authors.length > 0 ? authors[0].startDate.format('YYYY-MM-DD') : '',
                 endDateVal: authors.length > 0 ? authors[0].endDate.format('YYYY-MM-DD') : ''
@@ -200,6 +212,7 @@ export class ContributionVisualization {
         this.wordFreqCache = result.wordFreq || {};
         this.commitDetailsCache = result.commitDetails || {};
         this.heatmapDetailsCache = result.heatmapDetails || {};
+        this.healthCache = result.health;
 
         if (this.panel) {
             this.webview = this.panel.webview;
@@ -393,7 +406,8 @@ export class ContributionVisualization {
                 ['{{WORD_FREQ}}', toSafeJson(result.wordFreq || {})],
                 ['{{IS_AUTO}}', this.autoRangeActive ? 'true' : 'false'],
                 ['{{COMMIT_DETAILS}}', toSafeJson(result.commitDetails || {})],
-                ['{{HEATMAP_DETAILS}}', toSafeJson(result.heatmapDetails || {})]
+                ['{{HEATMAP_DETAILS}}', toSafeJson(result.heatmapDetails || {})],
+                ['{{HEALTH_REPORT}}', toSafeJson(this.getHealthReport())]
             ];
 
             for (const [pattern, value] of replacements) {

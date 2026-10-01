@@ -63,7 +63,14 @@ const replacements = [
     ['{{WORD_FREQ}}', JSON.stringify({ fix: 3 })],
     ['{{IS_AUTO}}', 'true'],
     ['{{COMMIT_DETAILS}}', JSON.stringify({ alice: [] })],
-    ['{{HEATMAP_DETAILS}}', JSON.stringify({ '2026-09-25': [] })]
+    ['{{HEATMAP_DETAILS}}', JSON.stringify({ '2026-09-25': [] })],
+    ['{{HEALTH_REPORT}}', JSON.stringify({
+        summary: { totalCommits: 12, fixCommits: 4, fixRatio: 0.33, sourceChanges: 20, sourceChangesWithTest: 8, testSyncRatio: 0.4 },
+        riskyFiles: [{ file: 'src/a.ts', fixCommits: 3, totalCommits: 5, fixRatio: 0.6, severity: 'medium' }],
+        testGapFiles: [{ file: 'src/a.ts', changes: 6, withTest: 1, testRatio: 0.17, severity: 'high' }],
+        bots: [{ author: 'dependabot[bot]', email: 'bot@github.com', commits: 2 }],
+        notes: ['作者身份按 .mailmap 解析（git log --use-mailmap），别名与旧邮箱会合并为同一人。']
+    })]
 ];
 for (const [pattern, value] of replacements) {
     html = html.replace(pattern, () => value);
@@ -72,6 +79,14 @@ for (const [pattern, value] of replacements) {
 const failures = [];
 const leftover = html.match(/\{\{[A-Z_]+\}\}/g);
 if (leftover) failures.push('unreplaced placeholders: ' + [...new Set(leftover)].join(', '));
+
+// --- layout invariants ---------------------------------------------------
+// .chart-container pins height:400px and cannot shrink below min-content, so the
+// health section must opt out via the health-section class or its cards overpaint
+// each other. See the 1.4.0 layout regression.
+if (html.includes('health-grid') && !/class="chart-container health-section"/.test(html)) {
+    failures.push('health section reuses .chart-container without the health-section class: its fixed 400px height makes the cards overlap');
+}
 
 // --- CSP invariants (browser-enforced, invisible to node execution) -------
 const cspMatch = html.match(/<meta http-equiv="Content-Security-Policy" content="([^"]*)"/i);

@@ -2,6 +2,21 @@
 
 All notable changes to the "Git Stats Visualizer" extension will be documented in this file.
 
+## [1.4.0] - 2026-10-01
+
+### Added
+- **Health Check section** at the top of the panel, with three rules:
+  - **High-risk files (bug density)** — maps `fix`/`bug`/`hotfix`/`revert` commits (English and Chinese keywords) to the files they touched, ranked by fix commits and fix ratio
+  - **Test sync** — share of source changes that came with a test change, plus the frequently changed files that need tests most
+  - **Author identity** — detected bot accounts (dependabot, renovate, CI users) reported with their commit counts
+- `.mailmap` support: the git log now runs with `--use-mailmap`, so aliases and old addresses collapse into a single author instead of splitting one person across several rows
+- Health report CSV export
+- `src/healthChecks.ts`: dependency-free predicates and report builder, covered by 19 unit tests
+
+### Notes
+- Rule thresholds (minimum changes before a file is ranked, severity ratios, list caps) are centralised in `HEALTH_THRESHOLDS` in `src/healthChecks.ts`
+- A commit counts as fix-like when its subject matches `fix|fixes|fixed|bug|bugfix|hotfix|revert|regression` on a word boundary, or contains `修复|修正|缺陷|回滚|回退`
+
 ## [1.3.1] - 2026-10-01
 
 ### Security

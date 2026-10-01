@@ -302,6 +302,91 @@
             padding-top: 4px;
             font-style: italic;
         }
+
+        /* Health check.
+           .chart-container pins height:400px (right for charts) and flex items
+           cannot shrink below min-content, so this section needs its own auto
+           height plus grid tracks — otherwise the three cards overflow and paint
+           over each other. */
+        .chart-container.health-section {
+            height: auto;
+        }
+        .health-summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        .health-metric {
+            min-width: 0;
+            padding: 10px 12px;
+            border: 1px solid rgba(128, 128, 128, 0.35);
+            border-radius: 6px;
+            background: rgba(128, 128, 128, 0.08);
+        }
+        .health-metric .value {
+            font-size: 22px;
+            font-weight: 600;
+            line-height: 1.2;
+        }
+        .health-metric .label {
+            font-size: 12px;
+            opacity: 0.75;
+            margin-top: 2px;
+        }
+        .health-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 16px;
+            align-items: start;
+        }
+        .health-card {
+            min-width: 0;
+            overflow: hidden;
+        }
+        .health-card h3 {
+            font-size: 13px;
+            font-weight: 600;
+            margin: 0 0 8px 0;
+            opacity: 0.9;
+        }
+        .health-card .summary-table {
+            margin: 0;
+            table-layout: fixed;
+        }
+        .health-card .summary-table th,
+        .health-card .summary-table td {
+            padding: 6px 8px;
+            font-size: 12px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .health-card .summary-table td:first-child {
+            white-space: normal;
+            word-break: break-all;
+        }
+        .health-badge {
+            font-size: 11px;
+            font-weight: 600;
+            padding: 2px 8px;
+            border-radius: 10px;
+            margin-left: 8px;
+            vertical-align: middle;
+        }
+        .sev-high { background: rgba(244, 67, 54, 0.18); color: #f44336; }
+        .sev-medium { background: rgba(255, 152, 0, 0.18); color: #ff9800; }
+        .sev-low { background: rgba(76, 175, 80, 0.18); color: #4caf50; }
+        .health-notes {
+            font-size: 12px;
+            opacity: 0.8;
+            margin-top: 12px;
+            line-height: 1.7;
+        }
+        .health-empty {
+            opacity: 0.5;
+            padding: 8px 0;
+        }
     </style>
 </head>
 <body>
@@ -341,6 +426,48 @@
                     {{AUTHOR_OPTIONS}}
                 </select>
             </div>
+        </div>
+        <div class="chart-container health-section">
+            <h2 class="chart-title">Health Check
+                <span id="healthBadge" class="health-badge"></span>
+                <button class="export-btn" data-export-csv="health" title="Export health report as CSV">CSV</button>
+            </h2>
+            <div class="health-summary" id="healthSummary"></div>
+            <div class="health-grid">
+                <div class="health-card">
+                    <h3>High-risk files (bug density)</h3>
+                    <table class="summary-table" id="healthRiskyTable">
+                        <thead>
+                            <tr>
+                                <th>File</th>
+                                <th>Fix</th>
+                                <th>Total</th>
+                                <th>Fix ratio</th>
+                            </tr>
+                        </thead>
+                        <tbody id="healthRiskyBody"></tbody>
+                    </table>
+                </div>
+                <div class="health-card">
+                    <h3>Test sync (source changes that came with tests)</h3>
+                    <table class="summary-table" id="healthTestTable">
+                        <thead>
+                            <tr>
+                                <th>File</th>
+                                <th>Changes</th>
+                                <th>With tests</th>
+                                <th>Sync rate</th>
+                            </tr>
+                        </thead>
+                        <tbody id="healthTestBody"></tbody>
+                    </table>
+                </div>
+                <div class="health-card">
+                    <h3>Author identity</h3>
+                    <div id="healthIdentity"></div>
+                </div>
+            </div>
+            <div class="health-notes" id="healthNotes"></div>
         </div>
         <div class="chart-container">
             <div class="pie-chart-container">
@@ -921,6 +1048,10 @@
                         renderWordFreq(message.wordFreq);
                     }
 
+                    if (message.health) {
+                        renderHealth(message.health);
+                    }
+
                     if (message.commitDetails) {
                         commitDetails = message.commitDetails;
                         addChartClick(commitChart, commitDetails);
@@ -1485,11 +1616,113 @@
             }
         });
 
+        // ---- Health check -------------------------------------------------
+        function healthPct(value) {
+            return Math.round((value || 0) * 100) + '%';
+        }
+
+        function healthSeverityBadge(severity) {
+            if (!severity) return '';
+            return '<span class="health-badge sev-' + severity + '">' + severity + '</span>';
+        }
+
+        function renderHealth(health) {
+            const summaryEl = document.getElementById('healthSummary');
+            const badgeEl = document.getElementById('healthBadge');
+            const riskyBody = document.getElementById('healthRiskyBody');
+            const testBody = document.getElementById('healthTestBody');
+            const identityEl = document.getElementById('healthIdentity');
+            const notesEl = document.getElementById('healthNotes');
+            if (!summaryEl || !riskyBody || !testBody || !identityEl) return;
+
+            const report = health || {};
+            const summary = report.summary || {};
+            const risky = report.riskyFiles || [];
+            const testGaps = report.testGapFiles || [];
+            const bots = report.bots || [];
+
+            const metrics = [
+                { label: 'Commits analysed', value: String(summary.totalCommits || 0) },
+                { label: 'Fix-like commits', value: String(summary.fixCommits || 0) + ' · ' + healthPct(summary.fixRatio) },
+                { label: 'Test sync rate', value: healthPct(summary.testSyncRatio) },
+                { label: 'Bot accounts', value: String(bots.length) }
+            ];
+            summaryEl.innerHTML = metrics.map(function(m) {
+                return '<div class="health-metric"><div class="value">' + escapeHtml(m.value) + '</div>'
+                    + '<div class="label">' + escapeHtml(m.label) + '</div></div>';
+            }).join('');
+
+            if (badgeEl) {
+                const highCount = risky.filter(function(r) { return r.severity === 'high'; }).length
+                    + testGaps.filter(function(r) { return r.severity === 'high'; }).length;
+                badgeEl.className = 'health-badge ' + (highCount > 0 ? 'sev-high' : (risky.length + testGaps.length > 0 ? 'sev-medium' : 'sev-low'));
+                badgeEl.textContent = highCount > 0
+                    ? highCount + ' high severity'
+                    : (risky.length + testGaps.length > 0 ? 'watch list' : 'no findings');
+            }
+
+            riskyBody.innerHTML = risky.length === 0
+                ? '<tr><td colspan="4" class="health-empty">No file reached the risk threshold yet.</td></tr>'
+                : risky.map(function(r) {
+                    return '<tr><td title="' + escapeHtml(r.file) + '">' + escapeHtml(r.file) + '</td>'
+                        + '<td>' + (r.fixCommits || 0) + '</td>'
+                        + '<td>' + (r.totalCommits || 0) + '</td>'
+                        + '<td>' + healthPct(r.fixRatio) + ' ' + healthSeverityBadge(r.severity) + '</td></tr>';
+                }).join('');
+
+            testBody.innerHTML = testGaps.length === 0
+                ? '<tr><td colspan="4" class="health-empty">Every frequently changed source file came with test changes.</td></tr>'
+                : testGaps.map(function(r) {
+                    return '<tr><td title="' + escapeHtml(r.file) + '">' + escapeHtml(r.file) + '</td>'
+                        + '<td>' + (r.changes || 0) + '</td>'
+                        + '<td>' + (r.withTest || 0) + '</td>'
+                        + '<td>' + healthPct(r.testRatio) + ' ' + healthSeverityBadge(r.severity) + '</td></tr>';
+                }).join('');
+
+            identityEl.innerHTML = bots.length === 0
+                ? '<div class="health-empty">No bot accounts detected.</div>'
+                : '<table class="summary-table"><tbody>' + bots.map(function(b) {
+                    return '<tr><td title="' + escapeHtml(b.email || '') + '">' + escapeHtml(b.author || '') + '</td>'
+                        + '<td>' + (b.commits || 0) + ' commits</td></tr>';
+                }).join('') + '</tbody></table>';
+
+            if (notesEl) {
+                notesEl.innerHTML = (report.notes || []).map(function(note) {
+                    return '<div>· ' + escapeHtml(note) + '</div>';
+                }).join('');
+            }
+        }
+
+        function exportHealthCSV() {
+            const report = healthReport || {};
+            const summary = report.summary || {};
+            const lines = ['section,item,value'];
+            lines.push('summary,totalCommits,' + (summary.totalCommits || 0));
+            lines.push('summary,fixCommits,' + (summary.fixCommits || 0));
+            lines.push('summary,fixRatio,' + (summary.fixRatio || 0));
+            lines.push('summary,testSyncRatio,' + (summary.testSyncRatio || 0));
+            (report.riskyFiles || []).forEach(function(r) {
+                lines.push('riskyFile,"' + String(r.file).replace(/"/g, '""') + '",' + (r.fixCommits || 0) + '/' + (r.totalCommits || 0));
+            });
+            (report.testGapFiles || []).forEach(function(r) {
+                lines.push('testGap,"' + String(r.file).replace(/"/g, '""') + '",' + (r.withTest || 0) + '/' + (r.changes || 0));
+            });
+            (report.bots || []).forEach(function(b) {
+                lines.push('bot,"' + String(b.author || '').replace(/"/g, '""') + '",' + (b.commits || 0));
+            });
+            vscode.postMessage({
+                command: 'exportCsv',
+                csvContent: lines.join('\n'),
+                defaultFilename: 'git-stats-health.csv'
+            });
+        }
+
         const fileStats = {{FILE_STATS}};
         const ownership = {{OWNERSHIP}};
         const weeklyHourlyGrid = {{WEEKLY_HOURLY_GRID}};
         const weeklyHourlyMax = {{WEEKLY_HOURLY_MAX}};
         const wordFreq = {{WORD_FREQ}};
+        const healthReport = {{HEALTH_REPORT}};
         var commitDetails = {{COMMIT_DETAILS}};
         var heatmapDetails = {{HEATMAP_DETAILS}};
         addChartClick(commitChart, commitDetails);
@@ -1500,6 +1733,7 @@
         renderHeatmap(weeklyHourlyGrid, weeklyHourlyMax);
         renderOwnershipTree(ownership, fileStats, document.getElementById('ownershipTreeContainer'));
         renderWordFreq(wordFreq);
+        renderHealth(healthReport);
 
         const developerSelect = document.getElementById('developerSelect');
         developerSelect.addEventListener('change', function(e) {
@@ -1519,6 +1753,8 @@
             btn.addEventListener('click', function() {
                 if (btn.dataset.exportCsv === 'summary') {
                     exportSummaryCSV();
+                } else if (btn.dataset.exportCsv === 'health') {
+                    exportHealthCSV();
                 } else {
                     exportFileStatsCSV();
                 }

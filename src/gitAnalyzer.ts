@@ -1,6 +1,7 @@
 import { SimpleGit } from 'simple-git';
 import moment from 'moment';
 import { Segment, useDefault } from 'segmentit';
+import { HealthRaw, emptyHealthRaw, isDocFile, isFixSubject, isTestFile } from './healthChecks';
 
 /**
  * Lazily initialized segmenter — building the dictionary is expensive, so it
@@ -62,6 +63,8 @@ export interface ContributionResult {
     wordFreq: { [word: string]: number };
     commitDetails: { [date: string]: { t: string; a: string; m: string }[] };
     heatmapDetails: { [dayHour: string]: { d: string; t: string; a: string; m: string }[] };
+    /** Health-check counters; optional so older results/tests stay valid. */
+    health?: HealthRaw;
 }
 
 export interface GitAnalyzerConfig {
@@ -84,6 +87,7 @@ export interface ParsedGitLog {
     wordFreq: Map<string, number>;
     commitDetails: { [date: string]: { t: string; a: string; m: string }[] };
     heatmapDetails: { [dayHour: string]: { d: string; t: string; a: string; m: string }[] };
+    health: HealthRaw;
 }
 
 const STOP_WORDS = new Set([
@@ -194,6 +198,12 @@ export function parseGitLog(rawOutput: string, includeFile: (file: string) => bo
     const wordFreq = new Map<string, number>();
     const commitDetails: ParsedGitLog['commitDetails'] = {};
     const heatmapDetails: ParsedGitLog['heatmapDetails'] = {};
+    // Health-check counters (see healthChecks.ts): fix-like commits per file, and
+    // for each non-test/non-doc file whether its changes came with test changes.
+    const health = emptyHealthRaw();
+    const fileFixCommits = new Map<string, number>();
+    const fileSourceChanges = new Map<string, number>();
+    const fileSourceChangesWithTest = new Map<string, number>();
 
     const segmenter = getSegmenter();
 
@@ -215,6 +225,10 @@ export function parseGitLog(rawOutput: string, includeFile: (file: string) => bo
             subject.startsWith('[stash]')) {
             continue;
         }
+
+        const isFix = isFixSubject(subject);
+        const commitFiles: string[] = [];
+        let commitTouchedTest = false;
 
         // %aI always carries the committer's UTC offset. parseZone keeps that
         // offset instead of converting to the viewer's local time, so the day,
@@ -301,6 +315,11 @@ export function parseGitLog(rawOutput: string, includeFile: (file: string) => bo
 
             if (!includeFile(file)) continue;
 
+            commitFiles.push(file);
+            if (isTestFile(file)) {
+                commitTouchedTest = true;
+            }
+
             const insertions = ins === '-' ? 0 : parseInt(ins) || 0;
             const deletions = del === '-' ? 0 : parseInt(del) || 0;
 
@@ -326,9 +345,34 @@ export function parseGitLog(rawOutput: string, includeFile: (file: string) => bo
             stats[author].hourlyStats[hourKey].deletions += deletions;
             stats[author].hourlyStats[hourKey].files++;
         }
+
+        // Health-check bookkeeping for this commit. Test and documentation files
+        // are excluded from the "risky file" and test-gap rankings.
+        health.totalCommits++;
+        if (isFix) {
+            health.fixCommits++;
+        }
+        for (const file of commitFiles) {
+            const test = isTestFile(file);
+            const doc = isDocFile(file);
+            if (test || doc) {
+                continue;
+            }
+            fileSourceChanges.set(file, (fileSourceChanges.get(file) || 0) + 1);
+            if (commitTouchedTest) {
+                fileSourceChangesWithTest.set(file, (fileSourceChangesWithTest.get(file) || 0) + 1);
+            }
+            if (isFix) {
+                fileFixCommits.set(file, (fileFixCommits.get(file) || 0) + 1);
+            }
+        }
     }
 
-    return { stats, fileChanges, fileAuthorLines, wordFreq, commitDetails, heatmapDetails };
+    health.fileFixCommits = Object.fromEntries(fileFixCommits);
+    health.fileSourceChanges = Object.fromEntries(fileSourceChanges);
+    health.fileSourceChangesWithTest = Object.fromEntries(fileSourceChangesWithTest);
+
+    return { stats, fileChanges, fileAuthorLines, wordFreq, commitDetails, heatmapDetails, health };
 }
 
 export class GitContributionAnalyzer {
@@ -406,6 +450,9 @@ export class GitContributionAnalyzer {
                 'log',
                 branch || '--all',
                 '--no-merges',
+                // Resolve .mailmap so aliases and old addresses collapse into one
+                // author instead of splitting a person across several rows.
+                '--use-mailmap',
                 '--numstat',
                 '--date=iso-strict',
                 // %x00 separates records; fields per record: hash, author, email, ISO date, subject
@@ -430,7 +477,7 @@ export class GitContributionAnalyzer {
             const rawOutput = await this.git.raw(rawArgs);
 
             if (!rawOutput || !rawOutput.trim()) {
-                return { authorStats: {}, fileStats: [], ownership: [], wordFreq: {}, commitDetails: {}, heatmapDetails: {} };
+                return { authorStats: {}, fileStats: [], ownership: [], wordFreq: {}, commitDetails: {}, heatmapDetails: {}, health: emptyHealthRaw() };
             }
 
             const parsed = parseGitLog(rawOutput, file => this.shouldIncludeFile(file));
@@ -518,7 +565,8 @@ export class GitContributionAnalyzer {
                 ownership,
                 wordFreq,
                 commitDetails: parsed.commitDetails,
-                heatmapDetails: parsed.heatmapDetails
+                heatmapDetails: parsed.heatmapDetails,
+                health: parsed.health
             };
         } catch (error) {
             console.error('Error analyzing git log:', error);

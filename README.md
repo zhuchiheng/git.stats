@@ -22,6 +22,12 @@ Click the Git Stats icon in VS Code status bar to open the statistics interface.
 - Draggable and resizable chart containers
 - Real-time data updates
 
+### Health Check
+- High-risk file ranking by bug density (fix/bug/hotfix/revert commits mapped to the files they touched)
+- Source/test change synchronisation rate, plus the frequently changed files that need tests most
+- Bot account detection (dependabot, renovate, CI users) and `.mailmap`-aware author identity
+- Health report CSV export
+
 ### Multi-repo & Filtering
 - Multi-repo workspace support with repo and branch dropdown selectors
 - Cross-repo statistics merging
@@ -32,7 +38,7 @@ Click the Git Stats icon in VS Code status bar to open the statistics interface.
   - Custom date picker
 
 ### Export
-- CSV export for summary and file stats tables
+- CSV export for summary, file stats and health report tables
 - PNG export for any chart
 
 ## Installation

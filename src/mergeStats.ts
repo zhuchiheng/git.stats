@@ -7,6 +7,7 @@ import {
     OwnershipEntry,
     computeStreakStats
 } from './gitAnalyzer';
+import { emptyHealthRaw, mergeHealthRaw } from './healthChecks';
 
 /** Max entries kept per day/hour key in commit/heatmap detail maps (payload bounding). */
 export const MAX_DETAILS_PER_KEY = 50;
@@ -51,7 +52,7 @@ export function formatError(error: unknown): string {
 }
 
 function emptyResult(): ContributionResult {
-    return { authorStats: {}, fileStats: [], ownership: [], wordFreq: {}, commitDetails: {}, heatmapDetails: {} };
+    return { authorStats: {}, fileStats: [], ownership: [], wordFreq: {}, commitDetails: {}, heatmapDetails: {}, health: emptyHealthRaw() };
 }
 
 function mergeDailyStats(target: { [date: string]: DailyStats }, source: { [date: string]: DailyStats }): void {
@@ -94,6 +95,7 @@ export function mergeResults(results: ContributionResult[]): ContributionResult 
     const wordFreq: { [word: string]: number } = {};
     const commitDetails: ContributionResult['commitDetails'] = {};
     const heatmapDetails: ContributionResult['heatmapDetails'] = {};
+    const health = emptyHealthRaw();
 
     const pushDetails = <T>(target: { [key: string]: T[] }, source: { [key: string]: T[] }) => {
         for (const [key, entries] of Object.entries(source)) {
@@ -187,6 +189,7 @@ export function mergeResults(results: ContributionResult[]): ContributionResult 
 
         pushDetails(commitDetails, result.commitDetails || {});
         pushDetails(heatmapDetails, result.heatmapDetails || {});
+        mergeHealthRaw(health, result.health);
     }
 
     // Finalize authors: widened ranges + streaks recomputed over the merged data.
@@ -236,6 +239,7 @@ export function mergeResults(results: ContributionResult[]): ContributionResult 
         ownership,
         wordFreq: mergedWordFreq,
         commitDetails,
-        heatmapDetails
+        heatmapDetails,
+        health
     };
 }
